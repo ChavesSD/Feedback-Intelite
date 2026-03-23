@@ -589,7 +589,7 @@ const ensureInstance = async () => {
       const createBody = {
         instanceName: INSTANCE_NAME,
         token: EVOLUTION_KEY,
-        number: '0000000000@temp',
+        number: '0000000000@c.us',
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS'
       };
