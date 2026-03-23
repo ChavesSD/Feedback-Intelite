@@ -9,9 +9,22 @@ const os = require('os');
 const https = require('https');
 const cron = require('node-cron');
 
+const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+
+// Helper to get system base URL for WhatsApp notifications
+const getSystemUrl = () => {
+  if (process.env.RAILWAY_STATIC_URL) {
+    return `https://${process.env.RAILWAY_STATIC_URL}`;
+  }
+  if (process.env.SYSTEM_URL) {
+    return process.env.SYSTEM_URL;
+  }
+  const localIp = getLocalIP();
+  return `http://${localIp}:8080`;
+};
 
 // Function to get local IP
 const getLocalIP = () => {
@@ -28,11 +41,15 @@ const getLocalIP = () => {
 
 // Middleware
 app.use(cors({
-  origin: '*', // Permitir acesso de qualquer origem na rede local
+  origin: '*', // Permitir acesso de qualquer origem
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+
+// Serve static files from the frontend build
+const frontendPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendPath));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -691,8 +708,7 @@ app.post('/api/whatsapp/send-welcome', async (req, res) => {
       return res.status(400).json({ message: 'Usuário não encontrado ou sem WhatsApp' });
     }
 
-    const localIp = getLocalIP();
-    const systemUrl = `http://${localIp}:8080`;
+    const systemUrl = getSystemUrl();
 
     const templates = await getMessageTemplates();
     const message = renderTemplate(templates.welcome, {
@@ -719,8 +735,7 @@ cron.schedule('0 10 * * 5', async () => {
   console.log('⏰ Iniciando envio de lembretes de reunião...');
   try {
     const users = await User.find({ phone: { $exists: true, $ne: '' } });
-    const localIp = getLocalIP();
-    const systemUrl = `http://${localIp}:8080`;
+    const systemUrl = getSystemUrl();
     const templates = await getMessageTemplates();
     const message = renderTemplate(templates.reminder, {
       systemUrl,
@@ -749,8 +764,7 @@ const sendWhatsAppFeedback = async (receiver, feedback) => {
   if (!receiver.phone) return;
   
   try {
-    const localIp = getLocalIP();
-    const systemUrl = `http://${localIp}:8080`;
+    const systemUrl = getSystemUrl();
     const templates = await getMessageTemplates();
     const message = renderTemplate(templates.feedback, {
       name: receiver.name,
@@ -840,6 +854,11 @@ const createInitialSupervisors = async () => {
 };
 // Remover chamada solta ao final e manter apenas dentro do .then() da conexão
 // createInitialSupervisors();
+
+// Handle SPA routing: serve index.html for all non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   const localIP = getLocalIP();
