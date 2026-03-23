@@ -589,7 +589,7 @@ const ensureInstance = async () => {
       const createBody = {
         instanceName: INSTANCE_NAME,
         token: EVOLUTION_KEY,
-        number: '0000000000@c.us',
+        number: (process.env.WHATSAPP_NUMBER || '0000000000@c.us'),
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS'
       };
@@ -647,29 +647,33 @@ app.get('/api/whatsapp/status', async (req, res) => {
 
 app.get('/api/whatsapp/qrcode', async (req, res) => {
   try {
-    // Garantir que a instância exista antes de tentar conectar
     await ensureInstance();
+    const paths = [
+      `/instance/qrCode/${INSTANCE_NAME}`,
+      `/instance/qrcode/${INSTANCE_NAME}`,
+      `/instance/connect/${INSTANCE_NAME}`
+    ];
     let data;
-    try {
-      // Tentar v1 (connect)
-      data = await evolutionRequest('GET', `/instance/connect/${INSTANCE_NAME}`);
-    } catch (e) {
-      console.log('ℹ️ Falha ao buscar connect (v1), tentando v2...');
-      // Tentar v2 (connect)
-      data = await evolutionRequest('GET', `/instance/connect/${INSTANCE_NAME}`);
+    let lastErr;
+    for (const p of paths) {
+      try {
+        data = await evolutionRequest('GET', p);
+        break;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (!data) {
+      throw lastErr || { status: 500, data: { message: 'QR endpoints failed' } };
     }
     res.json(data);
   } catch (error) {
-    console.error('❌ Erro Evolution API (QRCode):', error);
-    
-    // Se o erro for 400, pode ser que a instância já esteja conectada ou precise ser reiniciada
     if (error.status === 400) {
       return res.status(400).json({ 
-        message: 'A instância pode já estar conectada ou em um estado que impede a geração do QR Code. Tente reiniciar a instância.',
+        message: 'A instância pode já estar conectada ou em estado inválido para QR. Reinicie a instância e tente novamente.',
         details: error.data 
       });
     }
-    
     res.status(500).json({ message: 'Erro ao buscar QR Code', details: error.data || error.message });
   }
 });

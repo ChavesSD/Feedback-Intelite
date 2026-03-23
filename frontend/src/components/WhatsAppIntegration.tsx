@@ -60,7 +60,7 @@ const WhatsAppIntegration = () => {
       // Evitar concorrência e renovação prematura do QR (expira ~40s)
       const now = Date.now();
       if (qrFetching) return;
-      if (lastQrTs && now - lastQrTs < 35000) return;
+      if (lastQrTs && now - lastQrTs < 45000) return;
       setQrFetching(true);
       const response = await fetch(`${API_URL}/whatsapp/qrcode`);
       const data = await response.json();
@@ -138,17 +138,17 @@ const WhatsAppIntegration = () => {
       if (instance?.status !== 'open') {
         fetchInstanceStatus();
       }
-    }, 12000);
+    }, 15000);
     // Refresh de QR a cada 30s enquanto não conectado (QR expira)
     const qrInterval = setInterval(() => {
       if (instance?.status !== 'open') {
         // Apenas renova se não houver QR ou se estiver próximo de expirar
-        const nearExpire = !lastQrTs || (Date.now() - lastQrTs > 35000);
+        const nearExpire = !lastQrTs || (Date.now() - lastQrTs > 45000);
         if (nearExpire) {
           fetchQrCode();
         }
       }
-    }, 30000);
+    }, 40000);
     return () => {
       clearInterval(statusInterval);
       clearInterval(qrInterval);
