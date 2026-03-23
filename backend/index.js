@@ -465,6 +465,7 @@ const EVOLUTION_ORIGIN = evolutionBaseUrl ? evolutionBaseUrl.origin : '';
 const EVOLUTION_BASE_PATH = evolutionBaseUrl ? evolutionBaseUrl.pathname.replace(/\/$/, '') : '';
 
 let API_BASE_PATH = EVOLUTION_BASE_PATH;
+let qrCache = { payload: null, fetchedAt: 0 };
 
 if (!EVOLUTION_URL || !EVOLUTION_KEY) {
   console.warn('⚠️ ATENÇÃO: EVOLUTION_API_URL ou EVOLUTION_API_KEY não configurados no .env');
@@ -569,68 +570,84 @@ const detectApiBasePath = async () => {
 
 detectApiBasePath();
 
-// Helper to check/create instance
-const ensureInstance = async () => {
-  try {
-    // Tentar buscar status da instância para ver se existe
-    try {
-      await evolutionRequest('GET', `/instance/connectionStatus/${INSTANCE_NAME}`);
-    } catch (e) {
-      if (e.status === 404) {
-        await evolutionRequest('GET', `/instance/connectionState/${INSTANCE_NAME}`);
-      } else {
-        throw e;
-      }
-    }
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`🚀 Criando nova instância WhatsApp: ${INSTANCE_NAME}`);
-      
-      const createBody = {
-        instanceName: INSTANCE_NAME,
-        token: EVOLUTION_KEY,
-        number: (process.env.WHATSAPP_NUMBER || '0000000000@c.us'),
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS'
-      };
+const getInstanceByName = async () => {
+  const instances = await evolutionRequest('GET', '/instance/fetchInstances');
+  if (!Array.isArray(instances)) return null;
+  return instances.find((i) => i.name === INSTANCE_NAME) || null;
+};
 
-      // Se for v2, o campo qrcode pode não ser necessário ou ter outro nome
-      // Mas para manter compatibilidade, enviamos o básico
-      await evolutionRequest('POST', '/instance/create', createBody);
-    }
+const createWhatsAppInstance = async () => {
+  const createBody = {
+    instanceName: INSTANCE_NAME,
+    token: process.env.EVOLUTION_INSTANCE_TOKEN || INSTANCE_NAME,
+    qrcode: true,
+    integration: 'WHATSAPP-BAILEYS'
+  };
+
+  if (process.env.WHATSAPP_NUMBER) {
+    createBody.number = process.env.WHATSAPP_NUMBER;
   }
+
+  await evolutionRequest('POST', '/instance/create', createBody);
+};
+
+const deleteWhatsAppInstance = async () => {
+  try {
+    await evolutionRequest('DELETE', `/instance/delete/${INSTANCE_NAME}`);
+    return;
+  } catch (_) {
+  }
+  await evolutionRequest('POST', `/instance/delete/${INSTANCE_NAME}`);
+};
+
+const ensureInstance = async () => {
+  let instance = await getInstanceByName();
+
+  const hasPlaceholderNumber = instance?.number === '0000000000@temp' || instance?.number === '0000000000@c.us';
+
+  if (instance && hasPlaceholderNumber) {
+    await deleteWhatsAppInstance();
+    instance = null;
+  }
+
+  if (!instance) {
+    console.log(`🚀 Criando nova instância WhatsApp: ${INSTANCE_NAME}`);
+    await createWhatsAppInstance();
+    instance = await getInstanceByName();
+  }
+
+  return instance;
+};
+
+const mapConnectionStatus = (status) => {
+  if (status === 'open') return 'open';
+  if (status === 'connecting') return 'connecting';
+  if (status === 'CONNECTED') return 'open';
+  if (status === 'CONNECTING') return 'connecting';
+  return 'close';
 };
 
 app.get('/api/whatsapp/status', async (req, res) => {
   try {
     console.log(`🔍 Verificando status do WhatsApp para: ${INSTANCE_NAME}`);
     await ensureInstance();
-    
-    let data;
-    try {
-      // Tentar endpoint v1
-      data = await evolutionRequest('GET', `/instance/connectionStatus/${INSTANCE_NAME}`);
-    } catch (e) {
-      if (e.status === 404) {
-        // Tentar endpoint v2
-        data = await evolutionRequest('GET', `/instance/connectionState/${INSTANCE_NAME}`);
-      } else {
-        throw e;
-      }
+
+    const instance = await getInstanceByName();
+    if (!instance) {
+      return res.status(404).json({ message: 'Instância não encontrada na Evolution API' });
     }
 
-    console.log(`✅ Resposta recebida da Evolution API`);
-    
-    // Mapear status de diferentes versões
-    const state = data.instance?.state || data.state || (data.status === 'CONNECTED' ? 'open' : 'close');
-    
+    const state = mapConnectionStatus(instance.connectionStatus);
+    if (state === 'open') {
+      qrCache = { payload: null, fetchedAt: 0 };
+    }
     res.json({
       instance: {
         instanceName: INSTANCE_NAME,
-        status: state, 
-        owner: data.instance?.owner || data.owner,
-        profileName: data.instance?.profileName || data.profileName,
-        profilePictureUrl: data.instance?.profilePictureUrl || data.profilePictureUrl
+        status: state,
+        owner: instance.ownerJid,
+        profileName: instance.profileName,
+        profilePictureUrl: instance.profilePicUrl
       }
     });
   } catch (error) {
@@ -648,6 +665,10 @@ app.get('/api/whatsapp/status', async (req, res) => {
 app.get('/api/whatsapp/qrcode', async (req, res) => {
   try {
     await ensureInstance();
+    const now = Date.now();
+    if (qrCache.payload && (now - qrCache.fetchedAt) < 35000) {
+      return res.json(qrCache.payload);
+    }
     const paths = [
       `/instance/qrCode/${INSTANCE_NAME}`,
       `/instance/qrcode/${INSTANCE_NAME}`,
@@ -674,6 +695,7 @@ app.get('/api/whatsapp/qrcode', async (req, res) => {
     if (!data) {
       throw lastErr || { status: 500, data: { message: 'QR endpoints failed' } };
     }
+    qrCache = { payload: data, fetchedAt: Date.now() };
     res.json(data);
   } catch (error) {
     if (error.status === 400) {

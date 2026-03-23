@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { API_URL } from '../context/AuthContext';
 import { MessageSquare, RefreshCw, Power, QrCode, CheckCircle2, AlertCircle, Smartphone, Send, Bell, Clock, X } from 'lucide-react';
 
@@ -26,8 +26,9 @@ const WhatsAppIntegration = () => {
   const [activeTemplateKey, setActiveTemplateKey] = useState<keyof MessageTemplates | null>(null);
   const [templateDraft, setTemplateDraft] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [qrFetching, setQrFetching] = useState(false);
   const [lastQrTs, setLastQrTs] = useState<number | null>(null);
+  const qrFetchingRef = useRef(false);
+  const lastQrTsRef = useRef<number | null>(null);
 
   const fetchInstanceStatus = async () => {
     try {
@@ -57,26 +58,26 @@ const WhatsAppIntegration = () => {
 
   const fetchQrCode = async () => {
     try {
-      // Evitar concorrência e renovação prematura do QR (expira ~40s)
       const now = Date.now();
-      if (qrFetching) return;
-      if (lastQrTs && now - lastQrTs < 45000) return;
-      setQrFetching(true);
+      if (qrFetchingRef.current) return;
+      if (lastQrTsRef.current && now - lastQrTsRef.current < 45000) return;
+      qrFetchingRef.current = true;
       const response = await fetch(`${API_URL}/whatsapp/qrcode`);
       const data = await response.json();
       if (response.ok) {
         // Suporte a diferentes formatos de resposta da Evolution API
         const code = data.base64 || data.qrcode?.base64 || data.code;
         if (code) {
-          // Garantir que o prefixo data:image/png;base64 esteja presente
           setQrCode(code.startsWith('data:') ? code : `data:image/png;base64,${code}`);
-          setLastQrTs(Date.now());
+          const ts = Date.now();
+          lastQrTsRef.current = ts;
+          setLastQrTs(ts);
         }
       }
     } catch (err) {
       console.error('Erro ao buscar QR Code:', err);
     } finally {
-      setQrFetching(false);
+      qrFetchingRef.current = false;
     }
   };
 
@@ -133,17 +134,14 @@ const WhatsAppIntegration = () => {
   useEffect(() => {
     fetchInstanceStatus();
     fetchTemplates();
-    // Poll de status
     const statusInterval = setInterval(() => {
       if (instance?.status !== 'open') {
         fetchInstanceStatus();
       }
     }, 15000);
-    // Refresh de QR a cada 30s enquanto não conectado (QR expira)
     const qrInterval = setInterval(() => {
       if (instance?.status !== 'open') {
-        // Apenas renova se não houver QR ou se estiver próximo de expirar
-        const nearExpire = !lastQrTs || (Date.now() - lastQrTs > 45000);
+        const nearExpire = !lastQrTsRef.current || (Date.now() - lastQrTsRef.current > 45000);
         if (nearExpire) {
           fetchQrCode();
         }
@@ -153,7 +151,7 @@ const WhatsAppIntegration = () => {
       clearInterval(statusInterval);
       clearInterval(qrInterval);
     };
-  }, [instance?.status, lastQrTs, qrFetching]);
+  }, [instance?.status, lastQrTs]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
