@@ -663,6 +663,14 @@ app.get('/api/whatsapp/qrcode', async (req, res) => {
         lastErr = e;
       }
     }
+    // Se nenhum GET funcionou, tentar POST /instance/connect/{name}
+    if (!data) {
+      try {
+        data = await evolutionRequest('POST', `/instance/connect/${INSTANCE_NAME}`);
+      } catch (e) {
+        lastErr = e;
+      }
+    }
     if (!data) {
       throw lastErr || { status: 500, data: { message: 'QR endpoints failed' } };
     }
