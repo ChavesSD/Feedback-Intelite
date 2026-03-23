@@ -856,7 +856,7 @@ const createInitialSupervisors = async () => {
 // createInitialSupervisors();
 
 // Handle SPA routing: serve index.html for all non-API routes
-app.get('*', (req, res) => {
+app.get('*all', (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
