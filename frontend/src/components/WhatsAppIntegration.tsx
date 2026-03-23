@@ -36,9 +36,10 @@ const WhatsAppIntegration = () => {
       
       if (response.ok) {
         setInstance(data.instance);
-        if (data.instance.status === 'close') {
+        // Não limpar o QR durante estados intermediários (ex.: connecting)
+        if (data.instance.status === 'close' || data.instance.status === 'connecting') {
           fetchQrCode();
-        } else {
+        } else if (data.instance.status === 'open') {
           setQrCode(null);
         }
       } else {
@@ -122,12 +123,22 @@ const WhatsAppIntegration = () => {
   useEffect(() => {
     fetchInstanceStatus();
     fetchTemplates();
-    const interval = setInterval(() => {
+    // Poll de status
+    const statusInterval = setInterval(() => {
       if (instance?.status !== 'open') {
         fetchInstanceStatus();
       }
     }, 10000);
-    return () => clearInterval(interval);
+    // Refresh de QR a cada 30s enquanto não conectado (QR expira)
+    const qrInterval = setInterval(() => {
+      if (instance?.status !== 'open') {
+        fetchQrCode();
+      }
+    }, 30000);
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(qrInterval);
+    };
   }, [instance?.status]);
 
   return (
