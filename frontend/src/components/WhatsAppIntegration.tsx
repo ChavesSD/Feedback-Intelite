@@ -92,6 +92,25 @@ const WhatsAppIntegration = () => {
     }
   };
 
+  const handleDisconnect = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${API_URL}/whatsapp/disconnect`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.message || 'Erro ao desconectar instância');
+      }
+      setQrCode(null);
+      lastQrTsRef.current = null;
+      setLastQrTs(null);
+      setTimeout(fetchInstanceStatus, 2000);
+    } catch (err) {
+      setError('Erro ao desconectar instância');
+      setLoading(false);
+    }
+  };
+
   const fetchTemplates = async () => {
     try {
       const response = await fetch(`${API_URL}/whatsapp/templates`);
@@ -233,6 +252,13 @@ const WhatsAppIntegration = () => {
                   className="w-full py-4 bg-white/5 hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 rounded-2xl text-xs font-black text-gray-400 hover:text-red-500 transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
                 >
                   <Power className="w-4 h-4" /> Reiniciar Instância
+                </button>
+                <button
+                  onClick={handleDisconnect}
+                  disabled={loading || instance.status !== 'open'}
+                  className="w-full py-4 bg-white/5 hover:bg-red-600/15 border border-white/10 hover:border-red-500/40 rounded-2xl text-xs font-black text-gray-400 hover:text-red-400 transition-all flex items-center justify-center gap-2 uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <X className="w-4 h-4" /> Desconectar Instância
                 </button>
               </div>
             ) : null}

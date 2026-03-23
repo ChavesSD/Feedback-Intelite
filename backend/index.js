@@ -765,6 +765,40 @@ app.post('/api/whatsapp/restart', async (req, res) => {
   }
 });
 
+app.post('/api/whatsapp/disconnect', async (req, res) => {
+  try {
+    await ensureInstance();
+    const attempts = [
+      { method: 'POST', path: `/instance/logout/${INSTANCE_NAME}` },
+      { method: 'DELETE', path: `/instance/logout/${INSTANCE_NAME}` },
+      { method: 'POST', path: `/instance/disconnect/${INSTANCE_NAME}` },
+      { method: 'DELETE', path: `/instance/disconnect/${INSTANCE_NAME}` }
+    ];
+
+    let ok = false;
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      try {
+        await evolutionRequest(attempt.method, attempt.path);
+        ok = true;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (!ok) {
+      throw lastError || new Error('Falha ao desconectar instância');
+    }
+
+    qrCache = { payload: null, fetchedAt: 0 };
+    res.json({ message: 'Instância desconectada' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erro ao desconectar instância', details: error.data || error.message });
+  }
+});
+
 app.get('/api/whatsapp/templates', async (req, res) => {
   try {
     const templates = await getMessageTemplates();
