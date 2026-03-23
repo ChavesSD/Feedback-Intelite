@@ -100,6 +100,18 @@ const feedbackSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now }
 });
 
+const eventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  content: { type: String, required: true },
+  attachment: { type: String, default: '' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdByName: { type: String, required: true },
+  recognized: { type: Boolean, default: false },
+  recognizedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
+  recognizedAt: { type: Date, required: false },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const messageTemplateSchema = new mongoose.Schema({
   welcome: {
     type: String,
@@ -133,6 +145,7 @@ const messageTemplateSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 const Feedback = mongoose.model('Feedback', feedbackSchema);
+const Event = mongoose.model('Event', eventSchema);
 const MessageTemplate = mongoose.model('MessageTemplate', messageTemplateSchema);
 
 const getMessageTemplates = async () => {
@@ -330,6 +343,98 @@ app.post('/api/feedbacks', async (req, res) => {
     }
 
     res.status(201).json(newFeedback);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/events', async (req, res) => {
+  try {
+    const { viewerId } = req.query;
+    const viewer = viewerId ? await User.findById(viewerId) : null;
+    const isRhViewer = viewer?.sector === 'RH';
+    const events = await Event.find().sort({ createdAt: -1 }).populate('recognizedBy', 'name');
+
+    const response = events.map((event) => ({
+      _id: event._id,
+      title: event.title,
+      content: event.content,
+      attachment: event.attachment || '',
+      createdByName: event.createdByName,
+      recognized: event.recognized,
+      recognizedAt: event.recognizedAt,
+      createdAt: event.createdAt,
+      recognizedByName: isRhViewer && event.recognizedBy ? event.recognizedBy.name : undefined
+    }));
+
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/events', async (req, res) => {
+  try {
+    const { title, content, attachment, creatorId } = req.body;
+    const creator = await User.findById(creatorId);
+    if (!creator) {
+      return res.status(404).json({ message: 'Usuário criador não encontrado' });
+    }
+    if (creator.sector !== 'RH') {
+      return res.status(403).json({ message: 'Apenas usuários de RH podem criar eventos' });
+    }
+
+    const newEvent = new Event({
+      title,
+      content,
+      attachment: attachment || '',
+      createdBy: creator._id,
+      createdByName: creator.name
+    });
+
+    await newEvent.save();
+    res.status(201).json(newEvent);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/events/:id/recognize', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const recognizer = await User.findById(userId);
+    if (!recognizer) {
+      return res.status(404).json({ message: 'Usuário não encontrado' });
+    }
+
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ message: 'Evento não encontrado' });
+    }
+
+    if (event.recognized) {
+      return res.status(409).json({ message: 'Este evento já foi reconhecido' });
+    }
+
+    event.recognized = true;
+    event.recognizedBy = recognizer._id;
+    event.recognizedAt = new Date();
+    await event.save();
+
+    const feedback = new Feedback({
+      senderId: null,
+      senderName: 'Sistema de Eventos',
+      receiverId: recognizer._id.toString(),
+      receiverSector: recognizer.sector || 'Geral',
+      content: `Reconhecimento do evento: ${event.title}`,
+      rating: 1,
+      isAnonymous: false,
+      type: 'negative',
+      attachment: ''
+    });
+    await feedback.save();
+
+    res.json({ message: 'Evento reconhecido com sucesso' });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

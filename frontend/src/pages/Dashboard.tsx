@@ -5,12 +5,13 @@ import FeedbackForm from '../components/FeedbackForm';
 import UserManagement from '../components/UserManagement';
 import DashboardStats from '../components/DashboardStats';
 import WhatsAppIntegration from '../components/WhatsAppIntegration';
-import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone } from 'lucide-react';
+import EventsBoard from '../components/EventsBoard';
+import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays } from 'lucide-react';
 
 const Dashboard = () => {
   const { user, users, logout, updateUser, theme, toggleTheme } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats' | 'whatsapp'>('stats');
+  const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats' | 'whatsapp' | 'events'>('stats');
   const [loading, setLoading] = useState(true);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
@@ -143,6 +144,15 @@ const Dashboard = () => {
             <MessageSquare className="w-6 h-6 shrink-0" />
             {isSidebarExpanded && <span className="font-bold text-sm">Feedbacks</span>}
           </button>
+
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'events' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            title="Eventos"
+          >
+            <CalendarDays className="w-6 h-6 shrink-0" />
+            {isSidebarExpanded && <span className="font-bold text-sm">Eventos</span>}
+          </button>
           
           {isSupervisor && (
             <button 
@@ -183,7 +193,7 @@ const Dashboard = () => {
         <header className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-white/5 px-6 py-5 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-black tracking-tight text-white uppercase">
-              {(activeTab === 'stats' ? 'Dashboard' : activeTab === 'management' ? 'Gerenciar Equipe' : activeTab === 'whatsapp' ? 'WhatsApp' : 'Feedbacks')} <span className="text-blue-500">Overview</span>
+              {(activeTab === 'stats' ? 'Dashboard' : activeTab === 'management' ? 'Gerenciar Equipe' : activeTab === 'whatsapp' ? 'WhatsApp' : activeTab === 'events' ? 'Eventos' : 'Feedbacks')} <span className="text-blue-500">Overview</span>
             </h1>
             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-0.5">
               Performance & Team Insights
@@ -305,6 +315,12 @@ const Dashboard = () => {
               <WhatsAppIntegration />
             </div>
           )}
+
+          {activeTab === 'events' && (
+            <div className="animate-in fade-in duration-500">
+              <EventsBoard />
+            </div>
+          )}
         </main>
       </div>
 
@@ -324,6 +340,14 @@ const Dashboard = () => {
         >
           <MessageSquare className="w-6 h-6" />
           <span className="text-[10px] font-bold">Feedbacks</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('events')}
+          className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'events' ? 'text-blue-500' : 'text-gray-500'}`}
+        >
+          <CalendarDays className="w-6 h-6" />
+          <span className="text-[10px] font-bold">Eventos</span>
         </button>
         
         {isSupervisor && (
