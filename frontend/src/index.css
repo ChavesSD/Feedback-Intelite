@@ -1,0 +1,260 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Transição global sincronizada para todos os elementos que mudam de tema */
+*, ::before, ::after {
+  transition-property: background-color, border-color, color, box-shadow, transform;
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Modo Escuro (Padrão) */
+body:not(.light) {
+  background-color: #000000;
+  color: #ffffff;
+  color-scheme: dark;
+}
+
+/* Modo Claro */
+body.light {
+  background-color: #bae6fd; /* Sky-200 */
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.25) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.25) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(37, 99, 235, 0.25) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.25) 0px, transparent 50%),
+    linear-gradient(to bottom, rgba(125, 211, 252, 0.4), rgba(186, 230, 253, 0.2));
+  color: #0f172a;
+  color-scheme: light;
+}
+
+body.light #root {
+  background-color: transparent;
+}
+
+/* Ajustes globais para componentes em modo claro */
+body.light .bg-\[\#0a0a0a\],
+body.light .bg-\[\#050505\],
+body.light .bg-black {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05) !important;
+}
+
+body.light aside,
+body.light header,
+body.light nav,
+body.light .bg-white\/\[0\.02\],
+body.light .bg-white\/\[0\.03\],
+body.light .bg-white\/5 {
+  background-color: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(8px);
+  border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+body.light .bg-white\/5:hover {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+body.light .text-gray-400,
+body.light .text-gray-500 {
+  color: #64748b !important;
+}
+
+body.light .border-white\/5,
+body.light .border-white\/10 {
+  border-color: #e2e8f0 !important;
+}
+
+body.light input,
+body.light textarea,
+body.light select {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body.light input::placeholder,
+body.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Recharts overrides for Light Mode */
+body.light .recharts-cartesian-grid-horizontal line,
+body.light .recharts-cartesian-grid-vertical line {
+  stroke: #e2e8f0 !important;
+}
+
+body.light .recharts-tooltip-wrapper .bg-\[\#0a0a0a\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1) !important;
+}
+
+body.light .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+body.light .recharts-tooltip-item-list .recharts-tooltip-item {
+  color: #0f172a !important;
+}
+
+/* Icons and Badges in Light Mode */
+body.light .bg-yellow-500\/10 {
+  background-color: #fef3c7 !important; /* amber-100 */
+}
+body.light .text-yellow-500 {
+  color: #d97706 !important; /* amber-600 */
+}
+
+body.light .bg-blue-500\/10 {
+  background-color: #dbeafe !important; /* blue-100 */
+}
+body.light .text-blue-500 {
+  color: #2563eb !important; /* blue-600 */
+}
+
+body.light .bg-purple-500\/10 {
+  background-color: #f3e8ff !important; /* purple-100 */
+}
+body.light .text-purple-500 {
+  color: #9333ea !important; /* purple-600 */
+}
+
+body.light .bg-green-500\/10 {
+  background-color: #dcfce7 !important; /* green-100 */
+}
+body.light .text-green-500 {
+  color: #16a34a !important; /* green-600 */
+}
+
+body.light .bg-red-500\/10 {
+  background-color: #fee2e2 !important; /* red-100 */
+}
+body.light .text-red-500 {
+  color: #dc2626 !important; /* red-600 */
+}
+
+/* Podium adjustments for Light Mode */
+body.light .from-slate-900 {
+  --tw-gradient-from: #f1f5f9 !important;
+}
+
+body.light .bg-black {
+  background-color: #ffffff !important;
+}
+
+body.light .from-yellow-900\/40 {
+  --tw-gradient-from: rgba(254, 243, 199, 0.4) !important;
+}
+
+body.light .from-amber-900\/40 {
+  --tw-gradient-from: rgba(254, 215, 170, 0.4) !important;
+}
+
+body.light .shadow-\[0_0_30px_rgba\(234\,179\,8\,0\.3\)\] {
+  box-shadow: 0 0 30px rgba(234, 179, 8, 0.15) !important;
+}
+
+body.light .shadow-\[0_-10px_40px_rgba\(234\,179\,8\,0\.05\)\] {
+  box-shadow: 0 -10px 40px rgba(234, 179, 8, 0.05) !important;
+}
+
+body.light .from-yellow-900\/40 {
+  --tw-gradient-from: rgba(254, 243, 199, 0.6) !important;
+}
+
+body.light .to-yellow-500\/30 {
+  --tw-gradient-to: rgba(251, 191, 36, 0.2) !important;
+}
+
+body.light .text-white\/90,
+body.light .text-white\/80,
+body.light .text-white\/70,
+body.light .text-white {
+  color: #0f172a !important;
+}
+
+body.light .bg-blue-600 .text-white,
+body.light .bg-purple-600 .text-white,
+body.light .bg-green-600 .text-white,
+body.light .bg-red-600 .text-white,
+body.light button.bg-blue-600,
+body.light button.bg-purple-600,
+body.light button.bg-green-600,
+body.light button.bg-red-600 {
+  color: #ffffff !important;
+}
+
+body.light .bg-black\/40,
+body.light .bg-black\/60 {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+#root {
+  width: 100%;
+}
+
+/* Custom Scrollbar for modern look */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+body.light .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+body.light .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Scrollbar Modo Escuro */
+body:not(.light) ::-webkit-scrollbar-thumb {
+  background: #222222;
+  border-radius: 4px;
+}
+
+body:not(.light) ::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+/* Scrollbar Modo Claro */
+body.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 4px;
+}
+
+body.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
+}
