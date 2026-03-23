@@ -1,0 +1,14 @@
+{
+  "name": "feedback-system",
+  "version": "1.0.0",
+  "description": "Sistema de Feedback para Equipes",
+  "main": "backend/index.js",
+  "scripts": {
+    "start": "cd backend && node index.js",
+    "build": "cd frontend && npm install && npm run build",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

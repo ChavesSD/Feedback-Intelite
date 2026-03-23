@@ -30,8 +30,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Detectar o IP atual para chamadas de API
 export const getApiUrl = () => {
-  const { hostname } = window.location;
-  // Se estiver no localhost, usa localhost, senão usa o IP da rede
+  const { hostname, protocol, port } = window.location;
+  
+  // Se estiver em produção (Railway), usa a URL relativa ou absoluta do domínio
+  if (hostname !== 'localhost' && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+    return `${protocol}//${hostname}${port ? `:${port}` : ''}/api`;
+  }
+
+  // Se estiver no localhost ou IP direto (desenvolvimento), usa a porta 5001
   const baseIp = hostname === 'localhost' ? 'localhost' : hostname;
   return `http://${baseIp}:5001/api`;
 };
