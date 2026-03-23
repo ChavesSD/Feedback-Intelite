@@ -589,7 +589,7 @@ const ensureInstance = async () => {
       const createBody = {
         instanceName: INSTANCE_NAME,
         token: EVOLUTION_KEY,
-        number: '',
+        number: '0000000000@temp',
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS'
       };
@@ -647,6 +647,8 @@ app.get('/api/whatsapp/status', async (req, res) => {
 
 app.get('/api/whatsapp/qrcode', async (req, res) => {
   try {
+    // Garantir que a instância exista antes de tentar conectar
+    await ensureInstance();
     let data;
     try {
       // Tentar v1 (connect)
