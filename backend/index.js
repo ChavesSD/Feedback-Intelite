@@ -627,6 +627,54 @@ const mapConnectionStatus = (status) => {
   return 'close';
 };
 
+const normalizeWhatsAppNumber = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (raw.includes('@')) return raw;
+
+  let digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('00')) digits = digits.slice(2);
+
+  // Brasil: se vier sem DDI, assumir 55
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+    digits = `55${digits}`;
+  }
+
+  return digits;
+};
+
+const ensureSendableNumber = (value) => {
+  const normalized = normalizeWhatsAppNumber(value);
+  if (!normalized) {
+    throw new Error('Número de WhatsApp inválido ou ausente.');
+  }
+  if (!normalized.includes('@') && normalized.length < 12) {
+    throw new Error('Número de WhatsApp inválido. Use DDI + DDD + número.');
+  }
+  return normalized;
+};
+
+const sendWhatsAppText = async (number, text, options = { delay: 1200, presence: 'composing', linkPreview: false }) => {
+  const primaryPayload = {
+    number,
+    text,
+    options
+  };
+
+  try {
+    return await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, primaryPayload);
+  } catch (error) {
+    const fallbackPayload = {
+      number,
+      options,
+      textMessage: { text }
+    };
+    return await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, fallbackPayload);
+  }
+};
+
 app.get('/api/whatsapp/status', async (req, res) => {
   try {
     console.log(`🔍 Verificando status do WhatsApp para: ${INSTANCE_NAME}`);
@@ -752,11 +800,19 @@ app.put('/api/whatsapp/templates', async (req, res) => {
 app.post('/api/whatsapp/send-welcome', async (req, res) => {
   const { userId } = req.body;
   try {
+    await ensureInstance();
+    const instance = await getInstanceByName();
+    const connectionState = mapConnectionStatus(instance?.connectionStatus);
+    if (connectionState !== 'open') {
+      return res.status(409).json({ message: 'WhatsApp não está conectado. Conecte a instância antes de enviar mensagens.' });
+    }
+
     const user = await User.findById(userId);
     if (!user || !user.phone) {
       return res.status(400).json({ message: 'Usuário não encontrado ou sem WhatsApp' });
     }
 
+    const recipientNumber = ensureSendableNumber(user.phone);
     const systemUrl = getSystemUrl();
 
     const templates = await getMessageTemplates();
@@ -766,16 +822,15 @@ app.post('/api/whatsapp/send-welcome', async (req, res) => {
       systemUrl
     });
 
-    await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, {
-      number: user.phone,
-      options: { delay: 1200, presence: 'composing', linkPreview: false },
-      textMessage: { text: message }
-    });
+    await sendWhatsAppText(recipientNumber, message, { delay: 1200, presence: 'composing', linkPreview: false });
 
     res.json({ message: 'Mensagem de boas-vindas enviada!' });
   } catch (error) {
     console.error('❌ Erro ao enviar boas-vindas:', error);
-    res.status(500).json({ message: 'Erro ao enviar mensagem via WhatsApp' });
+    if (error?.status) {
+      return res.status(500).json({ message: 'Falha na Evolution API ao enviar mensagem.', details: error.data || error.message });
+    }
+    res.status(500).json({ message: error.message || 'Erro ao enviar mensagem via WhatsApp' });
   }
 });
 
@@ -793,11 +848,8 @@ cron.schedule('0 10 * * 5', async () => {
 
     for (const user of users) {
       try {
-        await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, {
-          number: user.phone,
-          options: { delay: 500, presence: 'composing', linkPreview: false },
-          textMessage: { text: message }
-        });
+        const recipientNumber = ensureSendableNumber(user.phone);
+        await sendWhatsAppText(recipientNumber, message, { delay: 500, presence: 'composing', linkPreview: false });
         console.log(`✅ Lembrete enviado para: ${user.name}`);
       } catch (err) {
         console.error(`❌ Erro ao enviar lembrete para ${user.name}:`, err.message);
@@ -813,6 +865,7 @@ const sendWhatsAppFeedback = async (receiver, feedback) => {
   if (!receiver.phone) return;
   
   try {
+    const recipientNumber = ensureSendableNumber(receiver.phone);
     const systemUrl = getSystemUrl();
     const templates = await getMessageTemplates();
     const message = renderTemplate(templates.feedback, {
@@ -822,11 +875,7 @@ const sendWhatsAppFeedback = async (receiver, feedback) => {
       systemUrl
     });
 
-    await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, {
-      number: receiver.phone,
-      options: { delay: 1200, presence: 'composing', linkPreview: false },
-      textMessage: { text: message }
-    });
+    await sendWhatsAppText(recipientNumber, message, { delay: 1200, presence: 'composing', linkPreview: false });
     console.log(`📱 Notificação WhatsApp enviada para: ${receiver.name}`);
   } catch (error) {
     console.error('❌ Falha ao enviar WhatsApp:', error);
