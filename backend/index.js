@@ -572,7 +572,7 @@ detectApiBasePath();
 // Helper to check/create instance
 const ensureInstance = async () => {
   try {
-    // Tentar buscar status da instância
+    // Tentar buscar status da instância para ver se existe
     try {
       await evolutionRequest('GET', `/instance/connectionStatus/${INSTANCE_NAME}`);
     } catch (e) {
@@ -585,14 +585,18 @@ const ensureInstance = async () => {
   } catch (error) {
     if (error.status === 404) {
       console.log(`🚀 Criando nova instância WhatsApp: ${INSTANCE_NAME}`);
-      // Corpo compatível com v1 e v2
-      await evolutionRequest('POST', '/instance/create', {
+      
+      const createBody = {
         instanceName: INSTANCE_NAME,
         token: EVOLUTION_KEY,
         number: '',
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS'
-      });
+      };
+
+      // Se for v2, o campo qrcode pode não ser necessário ou ter outro nome
+      // Mas para manter compatibilidade, enviamos o básico
+      await evolutionRequest('POST', '/instance/create', createBody);
     }
   }
 };
@@ -645,17 +649,26 @@ app.get('/api/whatsapp/qrcode', async (req, res) => {
   try {
     let data;
     try {
-      // Tentar v1
+      // Tentar v1 (connect)
       data = await evolutionRequest('GET', `/instance/connect/${INSTANCE_NAME}`);
     } catch (e) {
-      // Tentar v2 se v1 falhar
+      console.log('ℹ️ Falha ao buscar connect (v1), tentando v2...');
+      // Tentar v2 (connect)
       data = await evolutionRequest('GET', `/instance/connect/${INSTANCE_NAME}`);
-      // Nota: Em algumas versões v2 o path é o mesmo, mas o retorno muda
     }
     res.json(data);
   } catch (error) {
     console.error('❌ Erro Evolution API (QRCode):', error);
-    res.status(500).json({ message: 'Erro ao buscar QR Code' });
+    
+    // Se o erro for 400, pode ser que a instância já esteja conectada ou precise ser reiniciada
+    if (error.status === 400) {
+      return res.status(400).json({ 
+        message: 'A instância pode já estar conectada ou em um estado que impede a geração do QR Code. Tente reiniciar a instância.',
+        details: error.data 
+      });
+    }
+    
+    res.status(500).json({ message: 'Erro ao buscar QR Code', details: error.data || error.message });
   }
 });
 
