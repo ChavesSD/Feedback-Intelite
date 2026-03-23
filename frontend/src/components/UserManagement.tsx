@@ -154,8 +154,7 @@ const UserManagement = () => {
   const otherUsers = users.filter(u => {
     if (u._id === currentUser?._id) return false;
     if (currentUser?.role === 'supervisor') {
-      if (u.role === 'supervisor') return true;
-      return u.sector === currentUser.sector;
+      return true;
     }
     return true;
   });
