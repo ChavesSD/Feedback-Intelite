@@ -293,10 +293,57 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 // 2. Feedbacks
+app.get('/api/feedbacks/sent/:senderId', async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find({ senderId: req.params.senderId }).sort({ date: -1 });
+    res.json(feedbacks);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/feedbacks/:id', async (req, res) => {
+  try {
+    const { requesterId } = req.body || {};
+    if (!requesterId) {
+      return res.status(400).json({ message: 'requesterId é obrigatório' });
+    }
+
+    const feedback = await Feedback.findById(req.params.id);
+    if (!feedback) {
+      return res.status(404).json({ message: 'Feedback não encontrado' });
+    }
+
+    const senderId = feedback.senderId ? feedback.senderId.toString() : '';
+    const receiverId = feedback.receiverId ? feedback.receiverId.toString() : '';
+    const requester = await User.findById(requesterId).select('role');
+    const isSupervisor = requester?.role === 'supervisor';
+    const canDelete = isSupervisor || senderId === requesterId || receiverId === requesterId;
+    if (!canDelete) {
+      return res.status(403).json({ message: 'Sem permissão para excluir este feedback' });
+    }
+
+    await Feedback.deleteOne({ _id: feedback._id });
+    res.json({ message: 'Feedback removido' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/feedbacks/:receiverId', async (req, res) => {
   try {
     const feedbacks = await Feedback.find({ receiverId: req.params.receiverId }).sort({ date: -1 });
-    res.json(feedbacks);
+    const safe = feedbacks.map((f) => {
+      if (f.isAnonymous) {
+        return {
+          ...f.toObject(),
+          senderId: undefined,
+          senderName: 'Anônimo'
+        };
+      }
+      return f;
+    });
+    res.json(safe);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -320,7 +367,7 @@ app.post('/api/feedbacks', async (req, res) => {
     }
 
     const newFeedback = new Feedback({
-      senderId: isAnonymous ? null : senderId,
+      senderId: senderId || null,
       senderName: isAnonymous ? 'Anônimo' : senderName,
       receiverId,
       receiverSector,
@@ -445,7 +492,6 @@ app.get('/api/stats/dashboard', async (req, res) => {
   try {
     const { sector } = req.query;
 
-    // Top 3 Employees (based on average rating)
     const topEmployees = await Feedback.aggregate([
       // Primeiro agrupa por quem recebeu o feedback
       {
@@ -510,6 +556,65 @@ app.get('/api/stats/dashboard', async (req, res) => {
       }
     ]);
 
+    const topSupervisors = await Feedback.aggregate([
+      {
+        $group: {
+          _id: '$receiverId',
+          averageRating: { $avg: '$rating' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $addFields: {
+          userIdObj: {
+            $cond: {
+              if: {
+                $and: [
+                  { $eq: [{ $type: "$_id" }, "string"] },
+                  { $eq: [{ $strLenCP: "$_id" }, 24] },
+                  { $regexMatch: { input: "$_id", regex: "^[0-9a-fA-F]{24}$" } }
+                ]
+              },
+              then: { $toObjectId: "$_id" },
+              else: {
+                $cond: {
+                  if: { $eq: [{ $type: "$_id" }, "objectId"] },
+                  then: "$_id",
+                  else: null
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userIdObj',
+          foreignField: '_id',
+          as: 'userInfo'
+        }
+      },
+      { $unwind: '$userInfo' },
+      {
+        $match: {
+          'userInfo.role': 'supervisor',
+          ...(sector && sector !== 'Todos' ? { 'userInfo.sector': sector } : {})
+        }
+      },
+      { $sort: { averageRating: -1, count: -1 } },
+      { $limit: 3 },
+      {
+        $project: {
+          name: '$userInfo.name',
+          sector: '$userInfo.sector',
+          avatar: '$userInfo.avatar',
+          averageRating: 1,
+          count: 1
+        }
+      }
+    ]);
+
     // Feedbacks per Sector
     const sectorStats = await Feedback.aggregate([
       {
@@ -552,6 +657,7 @@ app.get('/api/stats/dashboard', async (req, res) => {
 
     res.json({
       topEmployees,
+      topSupervisors,
       sectorStats,
       typeStats
     });

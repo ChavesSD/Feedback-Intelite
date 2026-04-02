@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { Send, Info, ThumbsUp, ThumbsDown, Paperclip, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface FeedbackFormProps {
-  onSend: (content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative', attachment?: string | null) => void;
+  onSend: (receiverId: string, content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative', attachment?: string | null) => void;
 }
 
 const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
+  const { users, user } = useAuth();
   const [content, setContent] = useState('');
   const [attachment, setAttachment] = useState<string | null>(null);
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [selectedType, setSelectedType] = useState<'positive' | 'negative'>('positive');
+  const [receiverId, setReceiverId] = useState('');
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
@@ -40,14 +43,16 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (content) {
+    if (content && receiverId) {
       const finalRating = selectedType === 'positive' ? 5 : 1;
-      onSend(content, finalRating, isAnonymous, selectedType, attachment);
+      onSend(receiverId, content, finalRating, isAnonymous, selectedType, attachment);
       setContent('');
       setAttachment(null);
       setSelectedType('positive');
     }
   };
+
+  const availableRecipients = users.filter(u => u._id !== user?._id);
 
   return (
     <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm">
@@ -61,6 +66,33 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-8">
+        <div className="space-y-3">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider ml-1">
+            Enviar para
+          </label>
+          <select
+            required
+            value={receiverId}
+            onChange={(e) => setReceiverId(e.target.value)}
+            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-green-500/30 focus:border-green-500 outline-none transition-all"
+          >
+            <option value="" disabled style={{ backgroundColor: '#0a0a0a', color: '#ffffff' }}>
+              Selecione um usuário
+            </option>
+            {availableRecipients.length === 0 ? (
+              <option value="" disabled style={{ backgroundColor: '#0a0a0a', color: '#ffffff' }}>
+                Nenhum usuário disponível
+              </option>
+            ) : (
+              availableRecipients.map((u) => (
+                <option key={u._id} value={u._id} style={{ backgroundColor: '#0a0a0a', color: '#ffffff' }}>
+                  {u.name} • {u.role === 'supervisor' ? 'Supervisor' : 'Funcionário'} • {u.sector}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+
         <div className="space-y-3">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider ml-1">
             Seu Feedback
@@ -162,7 +194,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
 
         <button
           type="submit"
-          disabled={!content}
+          disabled={!content || !receiverId}
           className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-600 text-white font-black py-4 rounded-xl transition-all shadow-xl shadow-green-900/20 active:scale-[0.98] flex items-center justify-center gap-3 text-lg tracking-tight"
         >
           <Send className="w-5 h-5" />

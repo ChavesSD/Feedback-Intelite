@@ -10,8 +10,9 @@ import Avatar from '../components/Avatar';
 import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays } from 'lucide-react';
 
 const Dashboard = () => {
-  const { user, users, logout, updateUser, theme, toggleTheme } = useAuth();
+  const { user, logout, updateUser, theme, toggleTheme } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [feedbackView, setFeedbackView] = useState<'received' | 'sent'>('received');
   const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats' | 'whatsapp' | 'events'>('stats');
   const [loading, setLoading] = useState(true);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -58,9 +59,13 @@ const Dashboard = () => {
 
   const fetchFeedbacks = async () => {
     if (!user) return;
+    setLoading(true);
     try {
-      // Busca feedbacks onde o receptor é o ID do usuário logado
-      const response = await fetch(`${API_URL}/feedbacks/${user._id}`);
+      const response = await fetch(
+        feedbackView === 'sent'
+          ? `${API_URL}/feedbacks/sent/${user._id}`
+          : `${API_URL}/feedbacks/${user._id}`
+      );
       const data = await response.json();
       setFeedbacks(data);
     } catch (error) {
@@ -72,21 +77,17 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchFeedbacks();
-  }, [user]);
+  }, [user, feedbackView]);
 
-  const handleSendFeedback = async (content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative' | 'neutral' = 'neutral', attachment?: string | null) => {
+  const handleSendFeedback = async (receiverId: string, content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative' | 'neutral' = 'neutral', attachment?: string | null) => {
     try {
-      // Encontrar o supervisor do mesmo setor do usuário
-      const supervisor = users.find(u => u.role === 'supervisor' && u.sector === user?.sector);
-      const receiverId = supervisor ? supervisor._id : user?._id; // Fallback para si mesmo se não achar supervisor (não deve ocorrer)
-
       const response = await fetch(`${API_URL}/feedbacks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           senderId: user?._id,
           senderName: user?.name,
-          receiverId: receiverId,
+          receiverId,
           content,
           rating,
           isAnonymous,
@@ -238,14 +239,35 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
               {/* Left Column: Feedback List */}
               <div className="xl:col-span-8 order-2 xl:order-1">
-                <FeedbackList feedbacks={feedbacks} loading={loading} />
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={() => setFeedbackView('received')}
+                    className={`text-[10px] px-3 py-2 rounded-xl font-black uppercase tracking-widest transition-all border ${
+                      feedbackView === 'received'
+                        ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20'
+                        : 'bg-white/5 border-white/5 text-gray-500 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Recebidos
+                  </button>
+                  <button
+                    onClick={() => setFeedbackView('sent')}
+                    className={`text-[10px] px-3 py-2 rounded-xl font-black uppercase tracking-widest transition-all border ${
+                      feedbackView === 'sent'
+                        ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20'
+                        : 'bg-white/5 border-white/5 text-gray-500 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Enviados
+                  </button>
+                </div>
+
+                <FeedbackList feedbacks={feedbacks} loading={loading} mode={feedbackView} onDeleted={fetchFeedbacks} />
               </div>
               
               {/* Right Column: Feedback Form */}
               <div className="xl:col-span-4 order-1 xl:order-2">
-                {!isSupervisor && (
-                  <FeedbackForm onSend={handleSendFeedback} />
-                )}
+                <FeedbackForm onSend={handleSendFeedback} />
                 
                 {isSupervisor && (
                   <div className="bg-gradient-to-br from-purple-600/10 to-transparent border border-purple-500/20 rounded-3xl p-8 relative overflow-hidden group">

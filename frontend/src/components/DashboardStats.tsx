@@ -30,6 +30,7 @@ interface TypeStat {
 
 interface DashboardData {
   topEmployees: TopEmployee[];
+  topSupervisors: TopEmployee[];
   sectorStats: SectorStat[];
   typeStats: TypeStat[];
 }
@@ -63,9 +64,11 @@ const DashboardStats = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const stats = await response.json();
-      // Validar a estrutura básica dos dados recebidos
       if (stats && stats.topEmployees && stats.sectorStats && stats.typeStats) {
-        setData(stats);
+        setData({
+          ...stats,
+          topSupervisors: stats.topSupervisors ?? []
+        });
       } else {
         console.error('Dados do dashboard em formato inválido:', stats);
         setData(null);
@@ -309,6 +312,68 @@ const DashboardStats = () => {
             )}
           </AnimatePresence>
         </div>
+      </section>
+
+      <section>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-3">
+            <div className="bg-purple-500/10 p-2 rounded-lg">
+              <Crown className="w-5 h-5 text-purple-400" />
+            </div>
+            <h3 className="text-lg font-black text-white uppercase tracking-tight">Ranking de <span className="text-purple-400">Gestores</span></h3>
+          </div>
+          <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">
+            Supervisores e Gestores
+          </span>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-10 h-10 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
+          </div>
+        ) : data.topSupervisors.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {data.topSupervisors.map((u, idx) => (
+              <div
+                key={u._id || `${u.name}-${idx}`}
+                className={`border rounded-3xl p-5 flex items-center gap-4 ${
+                  idx === 0
+                    ? 'bg-purple-500/[0.06] border-purple-500/20'
+                    : 'bg-white/[0.02] border-white/10'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-2xl overflow-hidden border ${
+                  idx === 0 ? 'border-purple-500/30' : 'border-white/10'
+                }`}>
+                  <Avatar src={u.avatar} name={u.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-black px-2 py-1 rounded-lg border ${
+                      idx === 0 ? 'bg-purple-500/10 border-purple-500/20 text-purple-300' : 'bg-white/5 border-white/10 text-gray-300'
+                    }`}>
+                      #{idx + 1}
+                    </span>
+                    <span className="text-sm font-black text-white truncate">{u.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{u.sector}</span>
+                    <span className="text-[10px] text-gray-600 font-black">•</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{u.count} feedbacks</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 bg-black/40 px-3 py-2 rounded-2xl border border-white/10 shrink-0">
+                  <Star className={`w-4 h-4 ${idx === 0 ? 'text-purple-400 fill-purple-400' : 'text-yellow-500 fill-yellow-500'}`} />
+                  <span className="text-sm font-black text-white">{u.averageRating.toFixed(1)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-10 border border-dashed border-white/10 rounded-3xl">
+            <p className="text-gray-500 text-sm italic font-medium">Ainda não há gestores suficientes no ranking.</p>
+          </div>
+        )}
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

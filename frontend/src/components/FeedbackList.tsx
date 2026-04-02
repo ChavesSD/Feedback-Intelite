@@ -1,5 +1,6 @@
 import React from 'react';
-import { MessageSquare, Star, User, Calendar, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { MessageSquare, Star, User, Calendar, ThumbsUp, ThumbsDown, Trash2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export interface Feedback {
   _id: string;
@@ -18,14 +19,44 @@ export interface Feedback {
 interface FeedbackListProps {
   feedbacks: Feedback[];
   loading?: boolean;
+  mode?: 'received' | 'sent';
+  onDeleted?: () => void;
 }
 
-const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading }) => {
+const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 'received', onDeleted }) => {
+  const { users, user, token } = useAuth();
   const [filter, setFilter] = React.useState<'Todos' | 'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Todos');
 
   const filteredFeedbacks = filter === 'Todos' 
     ? feedbacks 
     : feedbacks.filter(f => f.receiverSector === filter);
+
+  const handleDelete = async (feedbackId: string) => {
+    if (!user?._id) return;
+    const ok = window.confirm('Deseja excluir este feedback enviado?');
+    if (!ok) return;
+
+    try {
+      const response = await fetch(`/api/feedbacks/${feedbackId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ requesterId: user._id })
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.message || 'Não foi possível excluir o feedback.');
+        return;
+      }
+
+      onDeleted?.();
+    } catch {
+      alert('Erro ao excluir feedback.');
+    }
+  };
 
   if (loading) {
     return (
@@ -43,7 +74,7 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading }) => {
           <div className="bg-blue-500/10 p-2 rounded-lg">
             <MessageSquare className="w-5 h-5 text-blue-500" />
           </div>
-          <h2 className="text-xl font-bold text-white">Feedbacks Recebidos</h2>
+          <h2 className="text-xl font-bold text-white">{mode === 'sent' ? 'Feedbacks Enviados' : 'Feedbacks Recebidos'}</h2>
         </div>
         
         <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
@@ -100,8 +131,15 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading }) => {
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="font-bold text-white group-hover:text-blue-400 transition-colors">
-                          {feedback.isAnonymous ? 'Remetente Anônimo' : feedback.senderName}
+                          {mode === 'sent'
+                            ? `Para: ${users.find(u => u._id === feedback.receiverId)?.name || 'Usuário'}`
+                            : (feedback.isAnonymous ? 'Remetente Anônimo' : feedback.senderName)}
                         </p>
+                        {mode === 'sent' && feedback.isAnonymous && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight bg-white/5 text-gray-400 border border-white/10">
+                            Anônimo
+                          </span>
+                        )}
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight ${
                           feedback.receiverSector === 'Suporte' ? 'bg-blue-500/10 text-blue-400' :
                           feedback.receiverSector === 'Comercial' ? 'bg-green-500/10 text-green-400' :
@@ -145,6 +183,17 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading }) => {
                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest bg-red-500/10 px-2 py-1 rounded border border-red-500/20">
                       Negativo
                     </span>
+                  )}
+
+                  {(mode === 'sent' || (mode === 'received' && feedback.receiverId === user?._id)) && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(feedback._id)}
+                      className="ml-3 p-2 rounded-xl border border-white/10 bg-white/[0.02] text-gray-500 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all"
+                      title="Excluir feedback"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
                 
