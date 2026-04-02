@@ -6,6 +6,7 @@ import UserManagement from '../components/UserManagement';
 import DashboardStats from '../components/DashboardStats';
 import WhatsAppIntegration from '../components/WhatsAppIntegration';
 import EventsBoard from '../components/EventsBoard';
+import Avatar from '../components/Avatar';
 import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays } from 'lucide-react';
 
 const Dashboard = () => {
@@ -222,11 +223,7 @@ const Dashboard = () => {
               title="Meu Perfil"
             >
               <div className="w-full h-full rounded-2xl bg-black flex items-center justify-center overflow-hidden">
-                {user?.avatar ? (
-                  <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-                ) : (
-                  <UserIcon className="w-6 h-6 text-white/80" />
-                )}
+                <Avatar src={user?.avatar} name={user?.name || 'Usuário'} className="w-full h-full object-cover" />
               </div>
               <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-lg p-1 border border-black group-hover:bg-blue-500 transition-colors">
                 <Settings className="w-3 h-3 text-white" />
@@ -406,11 +403,7 @@ const Dashboard = () => {
               <div className="flex flex-col items-center mb-6">
                 <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-600 to-purple-600 p-[1px] mb-4">
                   <div className="w-full h-full rounded-3xl bg-black flex items-center justify-center overflow-hidden">
-                    {profileAvatar ? (
-                      <img src={profileAvatar} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <UserIcon className="w-10 h-10 text-white/20" />
-                    )}
+                    <Avatar src={profileAvatar} name={profileName || 'Usuário'} className="w-full h-full object-cover" />
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Prévia do Avatar</p>

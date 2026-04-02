@@ -1093,6 +1093,109 @@ const createInitialSupervisors = async () => {
 // createInitialSupervisors();
 
 // Handle SPA routing: serve index.html for all non-API routes
+app.get('/api/avatar', async (req, res) => {
+  const rawUrl = typeof req.query.url === 'string' ? req.query.url : '';
+  if (!rawUrl) {
+    res.status(400).json({ message: 'Parâmetro url é obrigatório' });
+    return;
+  }
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(rawUrl);
+  } catch {
+    res.status(400).json({ message: 'URL inválida' });
+    return;
+  }
+
+  if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
+    res.status(400).json({ message: 'Protocolo não suportado' });
+    return;
+  }
+
+  const hostname = targetUrl.hostname.toLowerCase();
+  const isPrivateIp = (host) => {
+    const parts = host.split('.').map(n => Number(n));
+    if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return false;
+    const [a, b] = parts;
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    return false;
+  };
+
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || isPrivateIp(hostname)) {
+    res.status(400).json({ message: 'Host não permitido' });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(targetUrl.toString(), {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'FeedbackApp/1.0',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Referer': `${targetUrl.origin}/`,
+        'Origin': targetUrl.origin
+      }
+    });
+
+    if (!response.ok) {
+      res.status(502).json({ message: 'Falha ao buscar imagem' });
+      return;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const isImageLike =
+      contentType.startsWith('image/') ||
+      contentType === '' ||
+      contentType.startsWith('application/octet-stream');
+    if (!isImageLike) {
+      res.status(415).json({ message: 'Conteúdo não é uma imagem' });
+      return;
+    }
+
+    res.setHeader('Content-Type', contentType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    const MAX_BYTES = 5 * 1024 * 1024;
+    let total = 0;
+
+    if (response.body && response.body.getReader) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > MAX_BYTES) {
+          res.status(413).end();
+          return;
+        }
+        res.write(Buffer.from(value));
+      }
+      res.end();
+      return;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_BYTES) {
+      res.status(413).end();
+      return;
+    }
+    res.end(Buffer.from(arrayBuffer));
+  } catch (error) {
+    res.status(502).json({ message: 'Erro ao carregar imagem' });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
 app.get('*all', (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth, type User, API_URL } from '../context/AuthContext';
 import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, Edit2, ThumbsUp, ThumbsDown, X, Save, MessageSquare, Smartphone, Send, Paperclip } from 'lucide-react';
+import Avatar from './Avatar';
 
 const UserManagement = () => {
   const { users, addUser, updateUser, deleteUser, user: currentUser } = useAuth();
@@ -179,11 +180,7 @@ const UserManagement = () => {
           <form onSubmit={handleAdd} className="space-y-4 p-6 bg-white/[0.02] border border-white/5 rounded-2xl animate-in fade-in duration-300">
             <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center border border-white/10 overflow-hidden shrink-0">
-                {avatar ? (
-                  <img src={avatar} alt="Preview" className="w-full h-full object-cover" />
-                ) : (
-                  <ImageIcon className="w-6 h-6 text-gray-700" />
-                )}
+                <Avatar src={avatar} name={name || 'Novo membro'} className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 w-full">
                 <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-1">Novo Membro</p>
@@ -245,11 +242,7 @@ const UserManagement = () => {
                 <div key={emp._id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-white/[0.03] border border-white/5 rounded-2xl hover:bg-white/[0.05] transition-all group gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center border border-white/10 overflow-hidden shadow-inner">
-                      {emp.avatar ? (
-                        <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-lg font-black text-purple-400">{emp.name.charAt(0)}</span>
-                      )}
+                      <Avatar src={emp.avatar} name={emp.name} className="w-full h-full object-cover" />
                     </div>
                     <div>
                       <p className="text-base font-bold text-white leading-tight">{emp.name}</p>
@@ -313,11 +306,7 @@ const UserManagement = () => {
               <div className="flex flex-col items-center mb-6">
                 <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-purple-600 to-blue-600 p-[1px] mb-4">
                   <div className="w-full h-full rounded-3xl bg-black flex items-center justify-center overflow-hidden">
-                    {editAvatar ? (
-                      <img src={editAvatar} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="w-10 h-10 text-white/20" />
-                    )}
+                    <Avatar src={editAvatar} name={editName || 'Membro'} className="w-full h-full object-cover" />
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Prévia da Foto (URL)</p>

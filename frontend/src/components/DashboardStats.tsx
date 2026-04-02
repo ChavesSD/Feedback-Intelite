@@ -5,7 +5,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend 
 } from 'recharts';
-import { Trophy, Users, PieChart as PieChartIcon, Star, User as UserIcon, Crown } from 'lucide-react';
+import { Trophy, Users, PieChart as PieChartIcon, Star, Crown } from 'lucide-react';
+import Avatar from './Avatar';
 
 interface TopEmployee {
   _id: string;
@@ -185,13 +186,7 @@ const DashboardStats = () => {
                     >
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-slate-400 p-[2px] shadow-lg">
                         <div className="w-full h-full rounded-2xl bg-black overflow-hidden border border-white/10">
-                          {data.topEmployees[1].avatar ? (
-                            <img src={data.topEmployees[1].avatar} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-400">
-                              <UserIcon className="w-8 h-8" />
-                            </div>
-                          )}
+                          <Avatar src={data.topEmployees[1].avatar} name={data.topEmployees[1].name} className="w-full h-full object-cover" />
                         </div>
                       </div>
                       <div className="absolute -top-3 -right-3 w-8 h-8 bg-slate-400 text-black rounded-lg flex items-center justify-center font-black text-sm shadow-lg">2</div>
@@ -230,13 +225,7 @@ const DashboardStats = () => {
                       
                       <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-yellow-500 p-[3px] shadow-[0_0_30px_rgba(234,179,8,0.3)]">
                         <div className="w-full h-full rounded-3xl bg-black overflow-hidden border border-white/10 relative">
-                          {data.topEmployees[0].avatar ? (
-                            <img src={data.topEmployees[0].avatar} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-yellow-900/20 text-yellow-500">
-                              <UserIcon className="w-12 h-12" />
-                            </div>
-                          )}
+                          <Avatar src={data.topEmployees[0].avatar} name={data.topEmployees[0].name} className="w-full h-full object-cover" />
                           <div className="absolute top-1 right-1">
                             <Crown className="w-6 h-6 text-yellow-500 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
                           </div>
@@ -283,13 +272,7 @@ const DashboardStats = () => {
                     >
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-amber-700 p-[2px] shadow-lg">
                         <div className="w-full h-full rounded-2xl bg-black overflow-hidden border border-white/10">
-                          {data.topEmployees[2].avatar ? (
-                            <img src={data.topEmployees[2].avatar} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-amber-900/20 text-amber-700">
-                              <UserIcon className="w-8 h-8" />
-                            </div>
-                          )}
+                          <Avatar src={data.topEmployees[2].avatar} name={data.topEmployees[2].name} className="w-full h-full object-cover" />
                         </div>
                       </div>
                       <div className="absolute -top-3 -right-3 w-8 h-8 bg-amber-700 text-white rounded-lg flex items-center justify-center font-black text-sm shadow-lg">3</div>
