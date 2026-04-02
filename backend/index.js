@@ -13,6 +13,25 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+app.disable('x-powered-by');
+
+const authenticate = (req, res, next) => {
+  try {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ message: 'Não autenticado' });
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = { id: payload.id, role: payload.role };
+    return next();
+  } catch {
+    return res.status(401).json({ message: 'Token inválido ou expirado' });
+  }
+};
+
+const requireSupervisor = (req, res, next) => {
+  if (req.user?.role !== 'supervisor') return res.status(403).json({ message: 'Acesso negado' });
+  return next();
+};
 
 // Helper to get system base URL for WhatsApp notifications
 const getSystemUrl = () => {
@@ -40,12 +59,35 @@ const getLocalIP = () => {
 };
 
 // Middleware
+const allowedOrigins = (() => {
+  const list = [];
+  if (process.env.RAILWAY_STATIC_URL) list.push(`https://${process.env.RAILWAY_STATIC_URL}`);
+  if (process.env.FRONTEND_ORIGIN) list.push(process.env.FRONTEND_ORIGIN);
+  list.push('http://localhost:8080', 'http://127.0.0.1:8080');
+  return list;
+})();
+
 app.use(cors({
-  origin: '*', // Permitir acesso de qualquer origem
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (process.env.NODE_ENV === 'development') return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Origin não permitido'), false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  if (req.secure || (req.headers['x-forwarded-proto'] || '').includes('https')) {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  next();
+});
 
 // Serve static files from the frontend build
 const frontendPath = path.join(__dirname, '../frontend/dist');
@@ -180,14 +222,14 @@ app.post('/api/login', async (req, res) => {
     
     const user = await User.findOne({ username: username.toLowerCase() });
     if (!user) {
-      console.log(`❌ Usuário não encontrado: ${username}`);
-      return res.status(404).json({ message: 'Usuário não encontrado' });
+      console.log(`❌ Credenciais inválidas para: ${username}`);
+      return res.status(401).json({ message: 'Credenciais inválidas' });
     }
     
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.log(`❌ Senha incorreta para: ${username}`);
-      return res.status(401).json({ message: 'Senha incorreta' });
+      console.log(`❌ Credenciais inválidas para: ${username}`);
+      return res.status(401).json({ message: 'Credenciais inválidas' });
     }
 
     const token = jwt.sign(
@@ -211,26 +253,35 @@ app.post('/api/login', async (req, res) => {
     });
   } catch (error) {
     console.error('💥 Erro no servidor durante login:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
-app.get('/api/users', async (req, res) => {
+app.get('/api/users/public', authenticate, async (req, res) => {
+  try {
+    const users = await User.find().select('_id name username role sector avatar createdAt');
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Erro interno' });
+  }
+});
+
+app.get('/api/users', authenticate, requireSupervisor, async (req, res) => {
   try {
     const users = await User.find().select('-password');
     res.json(users);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
-app.post('/api/users', async (req, res) => {
+app.post('/api/users', authenticate, requireSupervisor, async (req, res) => {
   try {
-    const { name, username, role, password, avatar, sector, phone } = req.body;
+    const { name, username, password, avatar, sector, phone } = req.body;
     const newUser = new User({ 
       name, 
       username: username.toLowerCase(), 
-      role,
+      role: 'employee',
       sector: sector || 'Geral',
       password: password || process.env.DEFAULT_EMPLOYEE_PASSWORD || 'mudar123',
       avatar: avatar || '',
@@ -247,25 +298,38 @@ app.post('/api/users', async (req, res) => {
       phone: newUser.phone
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: 'Erro ao criar usuário' });
   }
 });
 
-app.put('/api/users/:id', async (req, res) => {
+app.put('/api/users/:id', authenticate, async (req, res) => {
   try {
     const { name, username, password, avatar, sector, role, phone } = req.body;
     
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Usuário não encontrado' });
 
-    // Atualizar apenas os campos fornecidos
-    if (name) user.name = name;
-    if (username) user.username = username.toLowerCase();
-    if (avatar !== undefined) user.avatar = avatar;
-    if (sector) user.sector = sector;
-    if (role) user.role = role;
-    if (password) user.password = password;
-    if (phone !== undefined) user.phone = phone;
+    const isSelf = req.user.id === String(user._id);
+    const isSupervisor = req.user.role === 'supervisor';
+
+    if (!isSelf && !isSupervisor) return res.status(403).json({ message: 'Acesso negado' });
+
+    if (isSelf) {
+      if (name) user.name = name;
+      if (avatar !== undefined) user.avatar = avatar;
+      if (phone !== undefined) user.phone = phone;
+      if (password) user.password = password;
+    }
+
+    if (isSupervisor) {
+      if (name) user.name = name;
+      if (username) user.username = username.toLowerCase();
+      if (avatar !== undefined) user.avatar = avatar;
+      if (sector) user.sector = sector;
+      if (role) user.role = role;
+      if (password) user.password = password;
+      if (phone !== undefined) user.phone = phone;
+    }
 
     await user.save();
 
@@ -279,36 +343,35 @@ app.put('/api/users/:id', async (req, res) => {
       phone: user.phone
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: 'Erro ao atualizar usuário' });
   }
 });
 
-app.delete('/api/users/:id', async (req, res) => {
+app.delete('/api/users/:id', authenticate, requireSupervisor, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.json({ message: 'Usuário removido' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
 // 2. Feedbacks
-app.get('/api/feedbacks/sent/:senderId', async (req, res) => {
+app.get('/api/feedbacks/sent/:senderId', authenticate, async (req, res) => {
   try {
+    const { senderId } = req.params;
+    if (req.user.role !== 'supervisor' && req.user.id !== senderId) {
+      return res.status(403).json({ message: 'Acesso negado' });
+    }
     const feedbacks = await Feedback.find({ senderId: req.params.senderId }).sort({ date: -1 });
     res.json(feedbacks);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
-app.delete('/api/feedbacks/:id', async (req, res) => {
+app.delete('/api/feedbacks/:id', authenticate, async (req, res) => {
   try {
-    const { requesterId } = req.body || {};
-    if (!requesterId) {
-      return res.status(400).json({ message: 'requesterId é obrigatório' });
-    }
-
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) {
       return res.status(404).json({ message: 'Feedback não encontrado' });
@@ -316,8 +379,8 @@ app.delete('/api/feedbacks/:id', async (req, res) => {
 
     const senderId = feedback.senderId ? feedback.senderId.toString() : '';
     const receiverId = feedback.receiverId ? feedback.receiverId.toString() : '';
-    const requester = await User.findById(requesterId).select('role');
-    const isSupervisor = requester?.role === 'supervisor';
+    const requesterId = req.user.id;
+    const isSupervisor = req.user.role === 'supervisor';
     const canDelete = isSupervisor || senderId === requesterId || receiverId === requesterId;
     if (!canDelete) {
       return res.status(403).json({ message: 'Sem permissão para excluir este feedback' });
@@ -326,12 +389,16 @@ app.delete('/api/feedbacks/:id', async (req, res) => {
     await Feedback.deleteOne({ _id: feedback._id });
     res.json({ message: 'Feedback removido' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
-app.get('/api/feedbacks/:receiverId', async (req, res) => {
+app.get('/api/feedbacks/:receiverId', authenticate, async (req, res) => {
   try {
+    const { receiverId } = req.params;
+    if (req.user.role !== 'supervisor' && req.user.id !== receiverId) {
+      return res.status(403).json({ message: 'Acesso negado' });
+    }
     const feedbacks = await Feedback.find({ receiverId: req.params.receiverId }).sort({ date: -1 });
     const safe = feedbacks.map((f) => {
       if (f.isAnonymous) {
@@ -345,13 +412,13 @@ app.get('/api/feedbacks/:receiverId', async (req, res) => {
     });
     res.json(safe);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
-app.post('/api/feedbacks', async (req, res) => {
+app.post('/api/feedbacks', authenticate, async (req, res) => {
   try {
-    const { senderId, senderName, receiverId, content, rating, isAnonymous, type, attachment } = req.body;
+    const { receiverId, content, rating, isAnonymous, type, attachment } = req.body;
     
     let receiverSector = 'Geral';
     
@@ -367,8 +434,8 @@ app.post('/api/feedbacks', async (req, res) => {
     }
 
     const newFeedback = new Feedback({
-      senderId: senderId || null,
-      senderName: isAnonymous ? 'Anônimo' : senderName,
+      senderId: req.user.id || null,
+      senderName: isAnonymous ? 'Anônimo' : (await User.findById(req.user.id))?.name || 'Usuário',
       receiverId,
       receiverSector,
       content,
@@ -391,14 +458,13 @@ app.post('/api/feedbacks', async (req, res) => {
 
     res.status(201).json(newFeedback);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: 'Erro ao enviar feedback' });
   }
 });
 
-app.get('/api/events', async (req, res) => {
+app.get('/api/events', authenticate, async (req, res) => {
   try {
-    const { viewerId } = req.query;
-    const viewer = viewerId ? await User.findById(viewerId) : null;
+    const viewer = await User.findById(req.user.id);
     const isRhViewer = viewer?.sector === 'RH';
     const events = await Event.find().sort({ createdAt: -1 }).populate('recognizedBy', 'name');
 
@@ -416,14 +482,14 @@ app.get('/api/events', async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
-app.post('/api/events', async (req, res) => {
+app.post('/api/events', authenticate, async (req, res) => {
   try {
-    const { title, content, attachment, creatorId } = req.body;
-    const creator = await User.findById(creatorId);
+    const { title, content, attachment } = req.body;
+    const creator = await User.findById(req.user.id);
     if (!creator) {
       return res.status(404).json({ message: 'Usuário criador não encontrado' });
     }
@@ -442,14 +508,13 @@ app.post('/api/events', async (req, res) => {
     await newEvent.save();
     res.status(201).json(newEvent);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: 'Erro ao criar evento' });
   }
 });
 
-app.post('/api/events/:id/recognize', async (req, res) => {
+app.post('/api/events/:id/recognize', authenticate, async (req, res) => {
   try {
-    const { userId } = req.body;
-    const recognizer = await User.findById(userId);
+    const recognizer = await User.findById(req.user.id);
     if (!recognizer) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
@@ -483,12 +548,12 @@ app.post('/api/events/:id/recognize', async (req, res) => {
 
     res.json({ message: 'Evento reconhecido com sucesso' });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: 'Erro ao reconhecer evento' });
   }
 });
 
 // 3. Stats & Dashboard
-app.get('/api/stats/dashboard', async (req, res) => {
+app.get('/api/stats/dashboard', authenticate, async (req, res) => {
   try {
     const { sector } = req.query;
 
@@ -662,7 +727,7 @@ app.get('/api/stats/dashboard', async (req, res) => {
       typeStats
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: 'Erro interno' });
   }
 });
 
@@ -886,7 +951,7 @@ const sendWhatsAppText = async (number, text, options = { delay: 1200, presence:
   }
 };
 
-app.get('/api/whatsapp/status', async (req, res) => {
+app.get('/api/whatsapp/status', authenticate, requireSupervisor, async (req, res) => {
   try {
     console.log(`🔍 Verificando status do WhatsApp para: ${INSTANCE_NAME}`);
     await ensureInstance();
@@ -917,11 +982,11 @@ app.get('/api/whatsapp/status', async (req, res) => {
     } else {
       console.error(`   Erro:`, error.message || error);
     }
-    res.status(500).json({ message: 'Erro ao conectar com Evolution API. Verifique os logs do servidor.' });
+    res.status(500).json({ message: 'Erro ao conectar com Evolution API' });
   }
 });
 
-app.get('/api/whatsapp/qrcode', async (req, res) => {
+app.get('/api/whatsapp/qrcode', authenticate, requireSupervisor, async (req, res) => {
   try {
     await ensureInstance();
     const now = Date.now();
@@ -959,15 +1024,14 @@ app.get('/api/whatsapp/qrcode', async (req, res) => {
   } catch (error) {
     if (error.status === 400) {
       return res.status(400).json({ 
-        message: 'A instância pode já estar conectada ou em estado inválido para QR. Reinicie a instância e tente novamente.',
-        details: error.data 
+        message: 'A instância pode já estar conectada ou em estado inválido para QR. Reinicie a instância e tente novamente.'
       });
     }
-    res.status(500).json({ message: 'Erro ao buscar QR Code', details: error.data || error.message });
+    res.status(500).json({ message: 'Erro ao buscar QR Code' });
   }
 });
 
-app.post('/api/whatsapp/restart', async (req, res) => {
+app.post('/api/whatsapp/restart', authenticate, requireSupervisor, async (req, res) => {
   try {
     await evolutionRequest('POST', `/instance/restart/${INSTANCE_NAME}`);
     res.json({ message: 'Instância reiniciada' });
@@ -976,7 +1040,7 @@ app.post('/api/whatsapp/restart', async (req, res) => {
   }
 });
 
-app.post('/api/whatsapp/disconnect', async (req, res) => {
+app.post('/api/whatsapp/disconnect', authenticate, requireSupervisor, async (req, res) => {
   try {
     await ensureInstance();
     const attempts = [
@@ -1006,11 +1070,11 @@ app.post('/api/whatsapp/disconnect', async (req, res) => {
     qrCache = { payload: null, fetchedAt: 0 };
     res.json({ message: 'Instância desconectada' });
   } catch (error) {
-    res.status(500).json({ message: 'Erro ao desconectar instância', details: error.data || error.message });
+    res.status(500).json({ message: 'Erro ao desconectar instância' });
   }
 });
 
-app.get('/api/whatsapp/templates', async (req, res) => {
+app.get('/api/whatsapp/templates', authenticate, requireSupervisor, async (req, res) => {
   try {
     const templates = await getMessageTemplates();
     res.json({
@@ -1023,7 +1087,7 @@ app.get('/api/whatsapp/templates', async (req, res) => {
   }
 });
 
-app.put('/api/whatsapp/templates', async (req, res) => {
+app.put('/api/whatsapp/templates', authenticate, requireSupervisor, async (req, res) => {
   try {
     const { welcome, feedback, reminder } = req.body || {};
     const templates = await getMessageTemplates();
@@ -1042,7 +1106,7 @@ app.put('/api/whatsapp/templates', async (req, res) => {
 });
 
 // Enviar Mensagem de Bem-Vindo
-app.post('/api/whatsapp/send-welcome', async (req, res) => {
+app.post('/api/whatsapp/send-welcome', authenticate, requireSupervisor, async (req, res) => {
   const { userId } = req.body;
   try {
     await ensureInstance();
@@ -1073,9 +1137,9 @@ app.post('/api/whatsapp/send-welcome', async (req, res) => {
   } catch (error) {
     console.error('❌ Erro ao enviar boas-vindas:', error);
     if (error?.status) {
-      return res.status(500).json({ message: 'Falha na Evolution API ao enviar mensagem.', details: error.data || error.message });
+      return res.status(500).json({ message: 'Falha na Evolution API ao enviar mensagem.' });
     }
-    res.status(500).json({ message: error.message || 'Erro ao enviar mensagem via WhatsApp' });
+    res.status(500).json({ message: 'Erro ao enviar mensagem via WhatsApp' });
   }
 });
 
@@ -1300,6 +1364,14 @@ app.get('/api/avatar', async (req, res) => {
   } finally {
     clearTimeout(timeout);
   }
+});
+
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError) {
+    return res.status(400).json({ message: 'JSON inválido' });
+  }
+  console.error('Erro não tratado:', err);
+  return res.status(500).json({ message: 'Erro interno' });
 });
 
 app.get('*all', (req, res) => {

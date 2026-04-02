@@ -15,7 +15,7 @@ interface EventItem {
 }
 
 const EventsBoard = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -29,7 +29,9 @@ const EventsBoard = () => {
   const fetchEvents = async () => {
     if (!user?._id) return;
     try {
-      const response = await fetch(`${API_URL}/events?viewerId=${user._id}`);
+      const response = await fetch(`${API_URL}/events`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      });
       const data = await response.json();
       if (response.ok) {
         setEvents(data);
@@ -65,12 +67,14 @@ const EventsBoard = () => {
       setError('');
       const response = await fetch(`${API_URL}/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           title,
           content,
-          attachment,
-          creatorId: user._id
+          attachment
         })
       });
       const data = await response.json();
@@ -95,8 +99,11 @@ const EventsBoard = () => {
       setError('');
       const response = await fetch(`${API_URL}/events/${eventId}/recognize`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user._id })
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({})
       });
       const data = await response.json();
       if (!response.ok) {

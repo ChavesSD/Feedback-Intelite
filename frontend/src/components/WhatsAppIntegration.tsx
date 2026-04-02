@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { API_URL } from '../context/AuthContext';
+import { API_URL, useAuth } from '../context/AuthContext';
 import { MessageSquare, RefreshCw, Power, QrCode, CheckCircle2, AlertCircle, Smartphone, Send, Bell, Clock, X } from 'lucide-react';
 
 interface InstanceInfo {
@@ -17,6 +17,7 @@ interface MessageTemplates {
 }
 
 const WhatsAppIntegration = () => {
+  const { token } = useAuth();
   const [instance, setInstance] = useState<InstanceInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -34,7 +35,9 @@ const WhatsAppIntegration = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_URL}/whatsapp/status`);
+      const response = await fetch(`${API_URL}/whatsapp/status`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      });
       const data = await response.json();
       
       if (response.ok) {
@@ -62,7 +65,9 @@ const WhatsAppIntegration = () => {
       if (qrFetchingRef.current) return;
       if (lastQrTsRef.current && now - lastQrTsRef.current < 45000) return;
       qrFetchingRef.current = true;
-      const response = await fetch(`${API_URL}/whatsapp/qrcode`);
+      const response = await fetch(`${API_URL}/whatsapp/qrcode`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      });
       const data = await response.json();
       if (response.ok) {
         // Suporte a diferentes formatos de resposta da Evolution API
@@ -84,7 +89,10 @@ const WhatsAppIntegration = () => {
   const handleRestart = async () => {
     try {
       setLoading(true);
-      await fetch(`${API_URL}/whatsapp/restart`, { method: 'POST' });
+      await fetch(`${API_URL}/whatsapp/restart`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      });
       setTimeout(fetchInstanceStatus, 3000);
     } catch (err) {
       setError('Erro ao reiniciar instância');
@@ -96,7 +104,10 @@ const WhatsAppIntegration = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_URL}/whatsapp/disconnect`, { method: 'POST' });
+      const response = await fetch(`${API_URL}/whatsapp/disconnect`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      });
       const data = await response.json();
       if (!response.ok) {
         setError(data.message || 'Erro ao desconectar instância');
@@ -113,7 +124,9 @@ const WhatsAppIntegration = () => {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch(`${API_URL}/whatsapp/templates`);
+      const response = await fetch(`${API_URL}/whatsapp/templates`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      });
       const data = await response.json();
       if (response.ok) {
         setTemplates(data);
@@ -135,7 +148,10 @@ const WhatsAppIntegration = () => {
       setSavingTemplate(true);
       const response = await fetch(`${API_URL}/whatsapp/templates`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ [activeTemplateKey]: templateDraft })
       });
       const data = await response.json();

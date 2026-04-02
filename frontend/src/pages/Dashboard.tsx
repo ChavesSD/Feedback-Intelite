@@ -10,7 +10,7 @@ import Avatar from '../components/Avatar';
 import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays } from 'lucide-react';
 
 const Dashboard = () => {
-  const { user, logout, updateUser, theme, toggleTheme } = useAuth();
+  const { user, logout, updateUser, theme, toggleTheme, token } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [feedbackView, setFeedbackView] = useState<'received' | 'sent'>('received');
   const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats' | 'whatsapp' | 'events'>('stats');
@@ -65,8 +65,15 @@ const Dashboard = () => {
         feedbackView === 'sent'
           ? `${API_URL}/feedbacks/sent/${user._id}`
           : `${API_URL}/feedbacks/${user._id}`
+        , {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+        }
       );
       const data = await response.json();
+      if (!response.ok) {
+        setFeedbacks([]);
+        return;
+      }
       setFeedbacks(data);
     } catch (error) {
       console.error('Erro ao buscar feedbacks:', error);
@@ -83,10 +90,11 @@ const Dashboard = () => {
     try {
       const response = await fetch(`${API_URL}/feedbacks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
-          senderId: user?._id,
-          senderName: user?.name,
           receiverId,
           content,
           rating,

@@ -40,10 +40,8 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
       const response = await fetch(`/api/feedbacks/${feedbackId}`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ requesterId: user._id })
+        }
       });
 
       if (!response.ok) {

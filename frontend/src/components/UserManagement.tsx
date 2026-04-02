@@ -4,7 +4,7 @@ import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, E
 import Avatar from './Avatar';
 
 const UserManagement = () => {
-  const { users, addUser, updateUser, deleteUser, user: currentUser } = useAuth();
+  const { users, addUser, updateUser, deleteUser, user: currentUser, token } = useAuth();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -62,7 +62,10 @@ const UserManagement = () => {
       setSendingWelcome(userId);
       const response = await fetch(`${API_URL}/whatsapp/send-welcome`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ userId })
       });
       if (!response.ok) throw new Error('Erro ao enviar');
@@ -125,10 +128,11 @@ const UserManagement = () => {
       setLoading(true);
       const response = await fetch(`${API_URL}/feedbacks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
-          senderId: currentUser?._id,
-          senderName: currentUser?.name,
           receiverId: feedbackUser._id, // Usar _id em vez de username
           content: feedbackContent,
           rating: selectedType === 'positive' ? 5 : 1,

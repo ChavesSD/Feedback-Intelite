@@ -70,14 +70,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    if (user) {
+    if (user && token) {
       refreshUsers();
     }
-  }, [user]);
+  }, [user, token]);
 
   const refreshUsers = async () => {
     try {
-      const response = await fetch(`${API_URL}/users`, {
+      if (!token) return;
+      const url = user?.role === 'supervisor' ? `${API_URL}/users` : `${API_URL}/users/public`;
+      const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
