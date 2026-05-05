@@ -10,6 +10,7 @@ const normalizeUrl = (raw: string) => {
   const trimmed = raw.trim();
   if (!trimmed) return '';
   if (trimmed.startsWith('data:')) return trimmed;
+  if (trimmed.startsWith('blob:')) return trimmed;
   try {
     return new URL(trimmed).toString();
   } catch {
@@ -37,11 +38,16 @@ const Avatar = ({ src, name, className }: Props) => {
   const initials = useMemo(() => getInitials(name), [name]);
 
   const effectiveSrc = attempt === 2 ? proxiedSrc : normalizedSrc;
+  const preferProxy = useMemo(() => {
+    if (!normalizedSrc) return false;
+    if (normalizedSrc.startsWith('http:') && window.location.protocol === 'https:') return true;
+    return false;
+  }, [normalizedSrc]);
 
   useEffect(() => {
     setErrored(false);
-    setAttempt(0);
-  }, [normalizedSrc]);
+    setAttempt(preferProxy ? 2 : 0);
+  }, [normalizedSrc, preferProxy]);
 
   if (!effectiveSrc || errored) {
     return (

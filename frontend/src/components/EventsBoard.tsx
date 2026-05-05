@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_URL, useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { Calendar, CheckCircle2, Image as ImageIcon, Send } from 'lucide-react';
 
 interface EventItem {
@@ -15,7 +15,7 @@ interface EventItem {
 }
 
 const EventsBoard = () => {
-  const { user, token } = useAuth();
+  const { user, apiFetchJson } = useAuth();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -29,14 +29,11 @@ const EventsBoard = () => {
   const fetchEvents = async () => {
     if (!user?._id) return;
     try {
-      const response = await fetch(`${API_URL}/events`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
-      const data = await response.json();
+      const { response, data } = await apiFetchJson<any>('/events');
       if (response.ok) {
-        setEvents(data);
+        setEvents(Array.isArray(data) ? data : []);
       } else {
-        setError(data.message || 'Erro ao carregar eventos');
+        setError((data as any)?.message || 'Erro ao carregar eventos');
       }
     } catch (e) {
       setError('Erro ao carregar eventos');
@@ -65,11 +62,10 @@ const EventsBoard = () => {
     try {
       setSubmitting(true);
       setError('');
-      const response = await fetch(`${API_URL}/events`, {
+      const { response, data } = await apiFetchJson<any>('/events', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           title,
@@ -77,9 +73,8 @@ const EventsBoard = () => {
           attachment
         })
       });
-      const data = await response.json();
       if (!response.ok) {
-        setError(data.message || 'Erro ao criar evento');
+        setError((data as any)?.message || 'Erro ao criar evento');
         return;
       }
       setTitle('');
@@ -97,17 +92,15 @@ const EventsBoard = () => {
     if (!user?._id) return;
     try {
       setError('');
-      const response = await fetch(`${API_URL}/events/${eventId}/recognize`, {
+      const { response, data } = await apiFetchJson<any>(`/events/${eventId}/recognize`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({})
       });
-      const data = await response.json();
       if (!response.ok) {
-        setError(data.message || 'Erro ao reconhecer evento');
+        setError((data as any)?.message || 'Erro ao reconhecer evento');
         return;
       }
       fetchEvents();

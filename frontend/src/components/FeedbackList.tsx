@@ -24,7 +24,7 @@ interface FeedbackListProps {
 }
 
 const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 'received', onDeleted }) => {
-  const { users, user, token } = useAuth();
+  const { users, user, apiFetchJson } = useAuth();
   const [filter, setFilter] = React.useState<'Todos' | 'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Todos');
 
   const filteredFeedbacks = filter === 'Todos' 
@@ -37,16 +37,10 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
     if (!ok) return;
 
     try {
-      const response = await fetch(`/api/feedbacks/${feedbackId}`, {
-        method: 'DELETE',
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
+      const { response, data } = await apiFetchJson<any>(`/feedbacks/${feedbackId}`, { method: 'DELETE' });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        alert(data.message || 'Não foi possível excluir o feedback.');
+        alert((data as any)?.message || 'Não foi possível excluir o feedback.');
         return;
       }
 

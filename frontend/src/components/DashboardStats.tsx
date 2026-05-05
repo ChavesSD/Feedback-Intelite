@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { API_URL, useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -36,7 +36,7 @@ interface DashboardData {
 }
 
 const DashboardStats = () => {
-  const { token } = useAuth();
+  const { apiFetchJson } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [top3Filter, setTop3Filter] = useState<'Todos' | 'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Todos');
@@ -60,13 +60,10 @@ const DashboardStats = () => {
   const fetchStats = async (sector: string = 'Todos') => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/stats/dashboard?sector=${sector}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
+      const { response, data: stats } = await apiFetchJson<DashboardData>(`/stats/dashboard?sector=${sector}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const stats = await response.json();
       if (stats && stats.topEmployees && stats.sectorStats && stats.typeStats) {
         setData({
           ...stats,

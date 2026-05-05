@@ -52,7 +52,8 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
     }
   };
 
-  const availableRecipients = users.filter(u => u._id !== user?._id);
+  const safeUsers = Array.isArray(users) ? users : [];
+  const availableRecipients = safeUsers.filter(u => u._id !== user?._id);
 
   return (
     <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm">

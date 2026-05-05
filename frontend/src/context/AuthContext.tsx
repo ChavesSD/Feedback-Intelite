@@ -20,6 +20,8 @@ interface AuthContextType {
   toggleTheme: () => void;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
+  apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
+  apiFetchJson: <T = unknown>(path: string, init?: RequestInit) => Promise<{ response: Response; data: T | null }>;
   addUser: (userData: { name: string, username: string, sector: string, password?: string, avatar?: string, phone?: string }) => Promise<void>;
   updateUser: (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, phone?: string }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
@@ -27,6 +29,40 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const base64UrlToString = (value: string) => {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  try {
+    return decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+        .join('')
+    );
+  } catch {
+    return '';
+  }
+};
+
+const getJwtExpMs = (token: string) => {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const payloadStr = base64UrlToString(parts[1]);
+  if (!payloadStr) return null;
+  try {
+    const payload = JSON.parse(payloadStr) as { exp?: number };
+    if (!payload?.exp) return null;
+    return payload.exp * 1000;
+  } catch {
+    return null;
+  }
+};
+
+const isJwtExpired = (token: string, skewMs: number = 30_000) => {
+  const expMs = getJwtExpMs(token);
+  if (!expMs) return false;
+  return Date.now() >= expMs - skewMs;
+};
 
 // Detectar o IP atual para chamadas de API
 export const getApiUrl = () => {
@@ -44,10 +80,37 @@ export const getApiUrl = () => {
 
 export const API_URL = getApiUrl();
 
+const resolveApiUrl = (path: string) => {
+  const trimmed = path.trim();
+  if (!trimmed) return API_URL;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return `${API_URL}${trimmed}`;
+  return `${API_URL}/${trimmed}`;
+};
+
+const safeJsonParse = <T,>(text: string): T | null => {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('auth_token'));
+  const [token, setToken] = useState<string | null>(() => {
+    const storedToken = localStorage.getItem('auth_token');
+    if (storedToken && isJwtExpired(storedToken)) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('logged_user');
+      return null;
+    }
+    return storedToken;
+  });
   const [user, setUser] = useState<User | null>(() => {
+    const storedToken = localStorage.getItem('auth_token');
+    if (storedToken && isJwtExpired(storedToken)) return null;
     const savedUser = localStorage.getItem('logged_user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
@@ -69,6 +132,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
+  const logout = () => {
+    setUser(null);
+    setUsers([]);
+    setToken(null);
+    localStorage.removeItem('logged_user');
+    localStorage.removeItem('auth_token');
+  };
+
+  const apiFetch = async (path: string, init?: RequestInit) => {
+    const url = resolveApiUrl(path);
+    const headers = new Headers(init?.headers);
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const response = await fetch(url, { ...init, headers });
+    if (response.status === 401) {
+      logout();
+    }
+    return response;
+  };
+
+  const apiFetchJson = async <T,>(path: string, init?: RequestInit) => {
+    const response = await apiFetch(path, init);
+    if (response.status === 204) return { response, data: null };
+    const text = await response.text();
+    const data = safeJsonParse<T>(text);
+    return { response, data };
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    if (isJwtExpired(token)) logout();
+  }, [token]);
+
   useEffect(() => {
     if (user && token) {
       refreshUsers();
@@ -78,14 +173,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshUsers = async () => {
     try {
       if (!token) return;
-      const url = user?.role === 'supervisor' ? `${API_URL}/users` : `${API_URL}/users/public`;
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      setUsers(data);
+      const path = user?.role === 'supervisor' ? '/users' : '/users/public';
+      const { response, data } = await apiFetchJson<User[]>(path);
+      if (!response.ok) {
+        setUsers([]);
+        return;
+      }
+      setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erro ao buscar usuários:', error);
+      setUsers([]);
     }
   };
 
@@ -117,40 +214,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('logged_user');
-    localStorage.removeItem('auth_token');
-  };
-
-  const addUser = async (userData: { name: string, username: string, sector: string, password?: string, avatar?: string }) => {
+  const addUser = async (userData: { name: string, username: string, sector: string, password?: string, avatar?: string, phone?: string }) => {
     try {
-      await fetch(`${API_URL}/users`, {
+      const response = await apiFetch('/users', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        } as HeadersInit,
         body: JSON.stringify({ ...userData, role: 'employee' }),
       });
+      if (!response.ok) return;
       await refreshUsers();
     } catch (error) {
       console.error('Erro ao adicionar usuário:', error);
     }
   };
 
-  const updateUser = async (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string }) => {
+  const updateUser = async (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, phone?: string }) => {
     try {
-      const response = await fetch(`${API_URL}/users/${id}`, {
+      const response = await apiFetch(`/users/${id}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        } as HeadersInit,
         body: JSON.stringify(userData),
       });
 
+      if (response.status === 401) {
+        throw new Error('Sessão expirada. Faça login novamente.');
+      }
       if (response.ok) {
         const updatedUser = await response.json();
         // Se o usuário atualizou seu próprio perfil, atualiza o estado local
@@ -172,9 +264,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteUser = async (id: string) => {
     try {
-      const response = await fetch(`${API_URL}/users/${id}`, { 
+      const response = await apiFetch(`/users/${id}`, { 
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
       
       if (response.ok) {
@@ -193,11 +284,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user, 
       users, 
       token,
-      isAuthenticated: !!user, 
+      isAuthenticated: !!user && !!token, 
       theme,
       toggleTheme,
       login, 
       logout, 
+      apiFetch,
+      apiFetchJson,
       addUser, 
       updateUser,
       deleteUser,

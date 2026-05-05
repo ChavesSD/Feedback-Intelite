@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { useAuth, type User, API_URL } from '../context/AuthContext';
+import { useAuth, type User } from '../context/AuthContext';
 import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, Edit2, ThumbsUp, ThumbsDown, X, Save, MessageSquare, Smartphone, Send, Paperclip } from 'lucide-react';
 import Avatar from './Avatar';
 
 const UserManagement = () => {
-  const { users, addUser, updateUser, deleteUser, user: currentUser, token } = useAuth();
+  const { users, addUser, updateUser, deleteUser, user: currentUser, apiFetch } = useAuth();
+  const safeUsers = Array.isArray(users) ? users : [];
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [avatar, setAvatar] = useState('');
+  const [avatarFileKey, setAvatarFileKey] = useState(0);
   const [phone, setPhone] = useState('');
   const [sector, setSector] = useState<'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Geral');
   const [loading, setLoading] = useState(false);
@@ -20,6 +22,7 @@ const UserManagement = () => {
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
+  const [editAvatarFileKey, setEditAvatarFileKey] = useState(0);
   const [editPhone, setEditPhone] = useState('');
   const [editSector, setEditSector] = useState<'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Geral');
   const [editRole, setEditRole] = useState<'employee' | 'supervisor'>('employee');
@@ -57,14 +60,63 @@ const UserManagement = () => {
     }
   };
 
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 700 * 1024) {
+      alert('Imagem muito grande. Use até 700KB.');
+      setAvatarFileKey((v) => v + 1);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (result.startsWith('data:image/')) {
+        setAvatar(result);
+      } else {
+        alert('Arquivo inválido. Selecione uma imagem.');
+      }
+      setAvatarFileKey((v) => v + 1);
+    };
+    reader.onerror = () => {
+      alert('Erro ao ler o arquivo.');
+      setAvatarFileKey((v) => v + 1);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleEditAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 700 * 1024) {
+      alert('Imagem muito grande. Use até 700KB.');
+      setEditAvatarFileKey((v) => v + 1);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (result.startsWith('data:image/')) {
+        setEditAvatar(result);
+      } else {
+        alert('Arquivo inválido. Selecione uma imagem.');
+      }
+      setEditAvatarFileKey((v) => v + 1);
+    };
+    reader.onerror = () => {
+      alert('Erro ao ler o arquivo.');
+      setEditAvatarFileKey((v) => v + 1);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSendWelcome = async (userId: string) => {
     try {
       setSendingWelcome(userId);
-      const response = await fetch(`${API_URL}/whatsapp/send-welcome`, {
+      const response = await apiFetch('/whatsapp/send-welcome', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({ userId })
       });
@@ -126,11 +178,10 @@ const UserManagement = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/feedbacks`, {
+      const response = await apiFetch('/feedbacks', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           receiverId: feedbackUser._id, // Usar _id em vez de username
@@ -156,7 +207,7 @@ const UserManagement = () => {
     }
   };
 
-  const otherUsers = users.filter(u => {
+  const otherUsers = safeUsers.filter(u => {
     if (u._id === currentUser?._id) return false;
     if (currentUser?.role === 'supervisor') {
       return true;
@@ -225,6 +276,22 @@ const UserManagement = () => {
               <div className="relative group">
                 <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
                 <input type="url" placeholder="URL da Foto (opcional)" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all" value={avatar} onChange={(e) => setAvatar(e.target.value)} />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 cursor-pointer transition-all">
+                  <ImageIcon className="w-4 h-4 text-purple-500" />
+                  Enviar imagem
+                  <input
+                    key={avatarFileKey}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                </label>
+                <span className="text-[10px] text-gray-600 font-black uppercase tracking-widest">
+                  Até 700KB
+                </span>
               </div>
             </div>
             <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-900/20">
@@ -314,6 +381,22 @@ const UserManagement = () => {
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Prévia da Foto (URL)</p>
+              </div>
+              <div className="flex items-center justify-center gap-3 -mt-2">
+                <label className="flex items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 cursor-pointer transition-all">
+                  <ImageIcon className="w-4 h-4 text-purple-500" />
+                  Enviar imagem
+                  <input
+                    key={editAvatarFileKey}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleEditAvatarFileChange}
+                  />
+                </label>
+                <span className="text-[10px] text-gray-600 font-black uppercase tracking-widest">
+                  Até 700KB
+                </span>
               </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

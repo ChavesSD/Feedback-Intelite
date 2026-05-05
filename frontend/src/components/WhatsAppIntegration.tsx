@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { API_URL, useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { MessageSquare, RefreshCw, Power, QrCode, CheckCircle2, AlertCircle, Smartphone, Send, Bell, Clock, X } from 'lucide-react';
 
 interface InstanceInfo {
@@ -17,7 +17,7 @@ interface MessageTemplates {
 }
 
 const WhatsAppIntegration = () => {
-  const { token } = useAuth();
+  const { apiFetch, apiFetchJson } = useAuth();
   const [instance, setInstance] = useState<InstanceInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -35,21 +35,18 @@ const WhatsAppIntegration = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_URL}/whatsapp/status`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
-      const data = await response.json();
+      const { response, data } = await apiFetchJson<any>('/whatsapp/status');
       
       if (response.ok) {
-        setInstance(data.instance);
+        setInstance((data as any)?.instance ?? null);
         // Não limpar o QR durante estados intermediários (ex.: connecting)
-        if (data.instance.status === 'close' || data.instance.status === 'connecting') {
+        if ((data as any)?.instance?.status === 'close' || (data as any)?.instance?.status === 'connecting') {
           fetchQrCode();
-        } else if (data.instance.status === 'open') {
+        } else if ((data as any)?.instance?.status === 'open') {
           setQrCode(null);
         }
       } else {
-        setError(data.message || 'Erro ao carregar status do WhatsApp');
+        setError((data as any)?.message || 'Erro ao carregar status do WhatsApp');
       }
     } catch (err) {
       setError('Erro de conexão com o servidor');
@@ -65,13 +62,10 @@ const WhatsAppIntegration = () => {
       if (qrFetchingRef.current) return;
       if (lastQrTsRef.current && now - lastQrTsRef.current < 45000) return;
       qrFetchingRef.current = true;
-      const response = await fetch(`${API_URL}/whatsapp/qrcode`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
-      const data = await response.json();
+      const { response, data } = await apiFetchJson<any>('/whatsapp/qrcode');
       if (response.ok) {
         // Suporte a diferentes formatos de resposta da Evolution API
-        const code = data.base64 || data.qrcode?.base64 || data.code;
+        const code = (data as any)?.base64 || (data as any)?.qrcode?.base64 || (data as any)?.code;
         if (code) {
           setQrCode(code.startsWith('data:') ? code : `data:image/png;base64,${code}`);
           const ts = Date.now();
@@ -89,10 +83,7 @@ const WhatsAppIntegration = () => {
   const handleRestart = async () => {
     try {
       setLoading(true);
-      await fetch(`${API_URL}/whatsapp/restart`, {
-        method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
+      await apiFetch('/whatsapp/restart', { method: 'POST' });
       setTimeout(fetchInstanceStatus, 3000);
     } catch (err) {
       setError('Erro ao reiniciar instância');
@@ -104,13 +95,9 @@ const WhatsAppIntegration = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_URL}/whatsapp/disconnect`, {
-        method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
-      const data = await response.json();
+      const { response, data } = await apiFetchJson<any>('/whatsapp/disconnect', { method: 'POST' });
       if (!response.ok) {
-        setError(data.message || 'Erro ao desconectar instância');
+        setError((data as any)?.message || 'Erro ao desconectar instância');
       }
       setQrCode(null);
       lastQrTsRef.current = null;
@@ -124,11 +111,8 @@ const WhatsAppIntegration = () => {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch(`${API_URL}/whatsapp/templates`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-      });
-      const data = await response.json();
-      if (response.ok) {
+      const { response, data } = await apiFetchJson<MessageTemplates>('/whatsapp/templates');
+      if (response.ok && data) {
         setTemplates(data);
       }
     } catch (err) {
@@ -146,16 +130,14 @@ const WhatsAppIntegration = () => {
     if (!activeTemplateKey) return;
     try {
       setSavingTemplate(true);
-      const response = await fetch(`${API_URL}/whatsapp/templates`, {
+      const { response, data } = await apiFetchJson<MessageTemplates>('/whatsapp/templates', {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({ [activeTemplateKey]: templateDraft })
       });
-      const data = await response.json();
-      if (response.ok) {
+      if (response.ok && data) {
         setTemplates(data);
         setTemplateModalOpen(false);
       }

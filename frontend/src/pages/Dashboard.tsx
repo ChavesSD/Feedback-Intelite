@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth, API_URL } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import FeedbackList, { type Feedback } from '../components/FeedbackList';
 import FeedbackForm from '../components/FeedbackForm';
 import UserManagement from '../components/UserManagement';
@@ -10,7 +10,7 @@ import Avatar from '../components/Avatar';
 import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays } from 'lucide-react';
 
 const Dashboard = () => {
-  const { user, logout, updateUser, theme, toggleTheme, token } = useAuth();
+  const { user, logout, updateUser, theme, toggleTheme, apiFetch, apiFetchJson } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [feedbackView, setFeedbackView] = useState<'received' | 'sent'>('received');
   const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats' | 'whatsapp' | 'events'>('stats');
@@ -24,6 +24,7 @@ const Dashboard = () => {
   const [profilePhone, setProfilePhone] = useState(user?.phone || '');
   const [profilePassword, setProfilePassword] = useState('');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [avatarFileInputKey, setAvatarFileInputKey] = useState(0);
 
   useEffect(() => {
     if (user) {
@@ -32,6 +33,31 @@ const Dashboard = () => {
       setProfilePhone(user.phone || '');
     }
   }, [user]);
+
+  const handleProfileAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 700 * 1024) {
+      alert('Imagem muito grande. Use até 700KB.');
+      setAvatarFileInputKey((v) => v + 1);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (result.startsWith('data:image/')) {
+        setProfileAvatar(result);
+      } else {
+        alert('Arquivo inválido. Selecione uma imagem.');
+      }
+      setAvatarFileInputKey((v) => v + 1);
+    };
+    reader.onerror = () => {
+      alert('Erro ao ler o arquivo.');
+      setAvatarFileInputKey((v) => v + 1);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,20 +87,15 @@ const Dashboard = () => {
     if (!user) return;
     setLoading(true);
     try {
-      const response = await fetch(
-        feedbackView === 'sent'
-          ? `${API_URL}/feedbacks/sent/${user._id}`
-          : `${API_URL}/feedbacks/${user._id}`
-        , {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
-        }
-      );
-      const data = await response.json();
+      const path = feedbackView === 'sent'
+        ? `/feedbacks/sent/${user._id}`
+        : `/feedbacks/${user._id}`;
+      const { response, data } = await apiFetchJson<Feedback[]>(path);
       if (!response.ok) {
         setFeedbacks([]);
         return;
       }
-      setFeedbacks(data);
+      setFeedbacks(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erro ao buscar feedbacks:', error);
     } finally {
@@ -88,11 +109,10 @@ const Dashboard = () => {
 
   const handleSendFeedback = async (receiverId: string, content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative' | 'neutral' = 'neutral', attachment?: string | null) => {
     try {
-      const response = await fetch(`${API_URL}/feedbacks`, {
+      const response = await apiFetch('/feedbacks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           receiverId,
@@ -461,6 +481,22 @@ const Dashboard = () => {
                     value={profileAvatar} 
                     onChange={(e) => setProfileAvatar(e.target.value)} 
                   />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 cursor-pointer transition-all">
+                    <ImageIcon className="w-4 h-4 text-blue-500" />
+                    Enviar imagem
+                    <input
+                      key={avatarFileInputKey}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleProfileAvatarFile}
+                    />
+                  </label>
+                  <span className="text-[10px] text-gray-600 font-black uppercase tracking-widest">
+                    Até 700KB
+                  </span>
                 </div>
 
                 <div className="relative group">
