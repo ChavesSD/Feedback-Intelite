@@ -119,6 +119,14 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['employee', 'supervisor'], default: 'employee' },
   sector: { type: String, enum: ['Suporte', 'Comercial', 'RH', 'Geral'], default: 'Geral' },
   avatar: { type: String, default: '' },
+  skills: {
+    atendimento: { type: Number, default: 0, min: 0, max: 5 },
+    proatividade: { type: Number, default: 0, min: 0, max: 5 },
+    tratamento: { type: Number, default: 0, min: 0, max: 5 },
+    agilidade: { type: Number, default: 0, min: 0, max: 5 },
+    dificuldade: { type: Number, default: 0, min: 0, max: 5 }
+  },
+  resolutionRate: { type: Number, default: 0, min: 0, max: 100 },
   phone: { type: String, default: '' }, // Adicionado para notificações WhatsApp
   createdAt: { type: Date, default: Date.now }
 });
@@ -248,6 +256,8 @@ app.post('/api/login', async (req, res) => {
         role: user.role,
         sector: user.sector,
         avatar: user.avatar,
+        skills: user.skills,
+        resolutionRate: user.resolutionRate,
         phone: user.phone || ''
       }
     });
@@ -259,7 +269,7 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/users/public', authenticate, async (req, res) => {
   try {
-    const users = await User.find().select('_id name username role sector avatar createdAt');
+    const users = await User.find().select('_id name username role sector avatar skills resolutionRate createdAt');
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Erro interno' });
@@ -295,6 +305,8 @@ app.post('/api/users', authenticate, requireSupervisor, async (req, res) => {
       role: newUser.role,
       sector: newUser.sector,
       avatar: newUser.avatar,
+      skills: newUser.skills,
+      resolutionRate: newUser.resolutionRate,
       phone: newUser.phone
     });
   } catch (error) {
@@ -304,7 +316,7 @@ app.post('/api/users', authenticate, requireSupervisor, async (req, res) => {
 
 app.put('/api/users/:id', authenticate, async (req, res) => {
   try {
-    const { name, username, password, avatar, sector, role, phone } = req.body;
+    const { name, username, password, avatar, sector, role, phone, skills, resolutionRate } = req.body;
     
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Usuário não encontrado' });
@@ -329,6 +341,28 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
       if (role) user.role = role;
       if (password) user.password = password;
       if (phone !== undefined) user.phone = phone;
+
+      const toNumberOrNull = (value) => {
+        const n = typeof value === 'number' ? value : Number(value);
+        return Number.isFinite(n) ? n : null;
+      };
+      const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+      if (skills && typeof skills === 'object') {
+        const fields = ['atendimento', 'proatividade', 'tratamento', 'agilidade', 'dificuldade'];
+        if (!user.skills) user.skills = {};
+        for (const field of fields) {
+          if (skills[field] !== undefined) {
+            const n = toNumberOrNull(skills[field]);
+            if (n !== null) user.skills[field] = clamp(n, 0, 5);
+          }
+        }
+      }
+
+      if (resolutionRate !== undefined) {
+        const n = toNumberOrNull(resolutionRate);
+        if (n !== null) user.resolutionRate = clamp(n, 0, 100);
+      }
     }
 
     await user.save();
@@ -340,6 +374,8 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
       role: user.role,
       sector: user.sector,
       avatar: user.avatar,
+      skills: user.skills,
+      resolutionRate: user.resolutionRate,
       phone: user.phone
     });
   } catch (error) {
@@ -615,6 +651,8 @@ app.get('/api/stats/dashboard', authenticate, async (req, res) => {
           name: '$userInfo.name',
           sector: '$userInfo.sector',
           avatar: '$userInfo.avatar',
+          skills: '$userInfo.skills',
+          resolutionRate: '$userInfo.resolutionRate',
           averageRating: 1,
           count: 1
         }
@@ -674,6 +712,8 @@ app.get('/api/stats/dashboard', authenticate, async (req, res) => {
           name: '$userInfo.name',
           sector: '$userInfo.sector',
           avatar: '$userInfo.avatar',
+          skills: '$userInfo.skills',
+          resolutionRate: '$userInfo.resolutionRate',
           averageRating: 1,
           count: 1
         }

@@ -8,6 +8,14 @@ export interface User {
   role: 'employee' | 'supervisor';
   sector: 'Suporte' | 'Comercial' | 'RH' | 'Geral';
   avatar?: string;
+  skills?: {
+    atendimento?: number;
+    proatividade?: number;
+    tratamento?: number;
+    agilidade?: number;
+    dificuldade?: number;
+  };
+  resolutionRate?: number;
   phone?: string;
 }
 
@@ -23,7 +31,7 @@ interface AuthContextType {
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
   apiFetchJson: <T = unknown>(path: string, init?: RequestInit) => Promise<{ response: Response; data: T | null }>;
   addUser: (userData: { name: string, username: string, sector: string, password?: string, avatar?: string, phone?: string }) => Promise<void>;
-  updateUser: (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, phone?: string }) => Promise<void>;
+  updateUser: (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, phone?: string, skills?: User['skills'], resolutionRate?: number }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   refreshUsers: () => Promise<void>;
 }
@@ -179,7 +187,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUsers([]);
         return;
       }
-      setUsers(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setUsers(list);
+
+      if (user) {
+        const self = list.find((u) => u._id === user._id);
+        if (self) {
+          const prevSkills = user.skills ?? {};
+          const nextSkills = self.skills ?? {};
+          const keys: (keyof NonNullable<User['skills']>)[] = ['atendimento', 'proatividade', 'tratamento', 'agilidade', 'dificuldade'];
+          const skillsChanged = keys.some((k) => (prevSkills as any)[k] !== (nextSkills as any)[k]);
+          const resolutionChanged = user.resolutionRate !== self.resolutionRate;
+
+          if (skillsChanged || resolutionChanged) {
+            const merged = { ...user, skills: nextSkills, resolutionRate: self.resolutionRate };
+            setUser(merged);
+            localStorage.setItem('logged_user', JSON.stringify(merged));
+          }
+        }
+      }
     } catch (error) {
       console.error('Erro ao buscar usuários:', error);
       setUsers([]);

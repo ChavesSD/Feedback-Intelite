@@ -7,7 +7,7 @@ import DashboardStats from '../components/DashboardStats';
 import WhatsAppIntegration from '../components/WhatsAppIntegration';
 import EventsBoard from '../components/EventsBoard';
 import Avatar from '../components/Avatar';
-import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays } from 'lucide-react';
+import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays, Star } from 'lucide-react';
 
 const Dashboard = () => {
   const { user, logout, updateUser, theme, toggleTheme, apiFetch, apiFetchJson } = useAuth();
@@ -441,15 +441,16 @@ const Dashboard = () => {
       {/* Profile Update Modal */}
       {isProfileModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-8">
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center px-8 pt-8 pb-6 shrink-0">
               <h3 className="text-2xl font-black text-white uppercase tracking-tight">Meu <span className="text-blue-500">Perfil</span></h3>
               <button onClick={() => setIsProfileModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-all">
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateProfile} className="space-y-6">
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-8 pb-8">
+              <form onSubmit={handleUpdateProfile} className="space-y-6">
               <div className="flex flex-col items-center mb-6">
                 <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-600 to-purple-600 p-[1px] mb-4">
                   <div className="w-full h-full rounded-3xl bg-black flex items-center justify-center overflow-hidden">
@@ -522,6 +523,46 @@ const Dashboard = () => {
                 </div>
               </div>
 
+              <div className="p-5 bg-white/[0.02] border border-white/5 rounded-2xl">
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Habilidades</p>
+                {(() => {
+                  const skills = user?.skills ?? {};
+                  const toInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(5, Math.round(v))) : 0);
+                  const fields = [
+                    { key: 'atendimento', label: 'Atendimento' },
+                    { key: 'proatividade', label: 'Proatividade' },
+                    { key: 'tratamento', label: 'Tratamento' },
+                    { key: 'agilidade', label: 'Agilidade' },
+                    { key: 'dificuldade', label: 'Dificuldade' }
+                  ] as const;
+                  const resolutionRate = typeof user?.resolutionRate === 'number' && Number.isFinite(user.resolutionRate) ? Math.max(0, Math.min(100, Math.round(user.resolutionRate))) : 0;
+                  return (
+                    <>
+                      <div className="space-y-3">
+                        {fields.map(({ key, label }) => {
+                          const value = toInt((skills as any)[key]);
+                          return (
+                            <div key={key} className="flex items-center justify-between gap-4">
+                              <span className="text-sm text-gray-300 font-bold">{label}</span>
+                              <div className="flex items-center gap-1">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star key={s} className={`w-4 h-4 ${value >= s ? 'text-yellow-500 fill-yellow-500' : 'text-gray-700'}`} />
+                                ))}
+                                <span className="ml-2 text-xs text-gray-500 font-mono w-5 text-right">{value}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-5 flex items-center justify-between">
+                        <span className="text-sm text-gray-300 font-bold">Taxa de Resolução</span>
+                        <span className="text-sm text-white font-mono">{resolutionRate}%</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
               <button 
                 type="submit" 
                 disabled={isUpdatingProfile} 
@@ -533,7 +574,8 @@ const Dashboard = () => {
                   <><Save className="w-4 h-4" /> Salvar Alterações</>
                 )}
               </button>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

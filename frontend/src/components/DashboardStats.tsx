@@ -13,6 +13,14 @@ interface TopEmployee {
   name: string;
   sector: string;
   avatar?: string;
+  skills?: {
+    atendimento?: number;
+    proatividade?: number;
+    tratamento?: number;
+    agilidade?: number;
+    dificuldade?: number;
+  };
+  resolutionRate?: number;
   averageRating: number;
   count: number;
 }
@@ -41,6 +49,32 @@ const DashboardStats = () => {
   const [loading, setLoading] = useState(true);
   const [top3Filter, setTop3Filter] = useState<'Todos' | 'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Todos');
   const [showConfetti, setShowConfetti] = useState(false);
+  const [hoveredHofIndex, setHoveredHofIndex] = useState<0 | 1 | 2 | null>(null);
+
+  const buildSkillsSummary = (emp: TopEmployee) => {
+    const s = emp.skills ?? {};
+    const toInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : 0);
+    const atendimento = toInt(s.atendimento);
+    const proatividade = toInt(s.proatividade);
+    const tratamento = toInt(s.tratamento);
+    const agilidade = toInt(s.agilidade);
+    const dificuldade = toInt(s.dificuldade);
+    const resolutionRate = typeof emp.resolutionRate === 'number' && Number.isFinite(emp.resolutionRate) ? Math.round(emp.resolutionRate) : 0;
+    return {
+      atendimento,
+      proatividade,
+      tratamento,
+      agilidade,
+      dificuldade,
+      resolutionRate
+    };
+  };
+
+  const canHover = () => {
+    if (typeof window === 'undefined') return false;
+    if (typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(hover: hover)').matches;
+  };
 
   const confettiPieces = useMemo(() => {
     const colors = ['#0ea5e9', '#38bdf8', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8', '#93c5fd'];
@@ -188,8 +222,39 @@ const DashboardStats = () => {
                       className="mb-4 relative"
                     >
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-slate-400 p-[2px] shadow-lg">
-                        <div className="w-full h-full rounded-2xl bg-black overflow-hidden border border-white/10">
+                        <div
+                          className="w-full h-full rounded-2xl bg-black overflow-hidden border border-white/10 relative group"
+                          onMouseEnter={() => {
+                            if (!canHover()) return;
+                            setHoveredHofIndex(1);
+                          }}
+                          onMouseLeave={() => {
+                            if (!canHover()) return;
+                            setHoveredHofIndex((prev) => (prev === 1 ? null : prev));
+                          }}
+                        >
                           <Avatar src={data.topEmployees[1].avatar} name={data.topEmployees[1].name} className="w-full h-full object-cover" />
+                          <div className={`absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 opacity-0 group-hover:opacity-100 transition-opacity transition-transform duration-300 ease-out pointer-events-none z-30 ${hoveredHofIndex === 1 ? '-translate-y-1' : 'translate-y-2'}`}>
+                            {(() => {
+                              const summary = buildSkillsSummary(data.topEmployees[1]);
+                              return (
+                                <div className="bg-black/95 border border-white/10 rounded-2xl p-3 shadow-2xl">
+                                  <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Habilidades</div>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Atendimento</span><span className="font-mono text-white">{summary.atendimento}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Proatividade</span><span className="font-mono text-white">{summary.proatividade}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Tratamento</span><span className="font-mono text-white">{summary.tratamento}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Agilidade</span><span className="font-mono text-white">{summary.agilidade}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Dificuldade</span><span className="font-mono text-white">{summary.dificuldade}/5</span></div>
+                                  </div>
+                                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-300">
+                                    <span>Resolução</span>
+                                    <span className="font-mono text-white">{summary.resolutionRate}%</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                       <div className="absolute -top-3 -right-3 w-8 h-8 bg-slate-400 text-black rounded-lg flex items-center justify-center font-black text-sm shadow-lg">2</div>
@@ -227,8 +292,39 @@ const DashboardStats = () => {
                       <div className="absolute inset-0 bg-yellow-500/20 blur-2xl rounded-full animate-pulse"></div>
                       
                       <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-yellow-500 p-[3px] shadow-[0_0_30px_rgba(234,179,8,0.3)]">
-                        <div className="w-full h-full rounded-3xl bg-black overflow-hidden border border-white/10 relative">
+                        <div
+                          className="w-full h-full rounded-3xl bg-black overflow-hidden border border-white/10 relative group"
+                          onMouseEnter={() => {
+                            if (!canHover()) return;
+                            setHoveredHofIndex(0);
+                          }}
+                          onMouseLeave={() => {
+                            if (!canHover()) return;
+                            setHoveredHofIndex((prev) => (prev === 0 ? null : prev));
+                          }}
+                        >
                           <Avatar src={data.topEmployees[0].avatar} name={data.topEmployees[0].name} className="w-full h-full object-cover" />
+                          <div className={`absolute left-1/2 -translate-x-1/2 top-full mt-3 w-64 opacity-0 group-hover:opacity-100 transition-opacity transition-transform duration-300 ease-out pointer-events-none z-30 ${hoveredHofIndex === 0 ? '-translate-y-1' : 'translate-y-2'}`}>
+                            {(() => {
+                              const summary = buildSkillsSummary(data.topEmployees[0]);
+                              return (
+                                <div className="bg-black/95 border border-white/10 rounded-2xl p-3 shadow-2xl">
+                                  <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Habilidades</div>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Atendimento</span><span className="font-mono text-white">{summary.atendimento}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Proatividade</span><span className="font-mono text-white">{summary.proatividade}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Tratamento</span><span className="font-mono text-white">{summary.tratamento}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Agilidade</span><span className="font-mono text-white">{summary.agilidade}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Dificuldade</span><span className="font-mono text-white">{summary.dificuldade}/5</span></div>
+                                  </div>
+                                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-300">
+                                    <span>Resolução</span>
+                                    <span className="font-mono text-white">{summary.resolutionRate}%</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                           <div className="absolute top-1 right-1">
                             <Crown className="w-6 h-6 text-yellow-500 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
                           </div>
@@ -274,8 +370,39 @@ const DashboardStats = () => {
                       className="mb-4 relative"
                     >
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-amber-700 p-[2px] shadow-lg">
-                        <div className="w-full h-full rounded-2xl bg-black overflow-hidden border border-white/10">
+                        <div
+                          className="w-full h-full rounded-2xl bg-black overflow-hidden border border-white/10 relative group"
+                          onMouseEnter={() => {
+                            if (!canHover()) return;
+                            setHoveredHofIndex(2);
+                          }}
+                          onMouseLeave={() => {
+                            if (!canHover()) return;
+                            setHoveredHofIndex((prev) => (prev === 2 ? null : prev));
+                          }}
+                        >
                           <Avatar src={data.topEmployees[2].avatar} name={data.topEmployees[2].name} className="w-full h-full object-cover" />
+                          <div className={`absolute left-1/2 -translate-x-1/2 top-full mt-2 w-56 opacity-0 group-hover:opacity-100 transition-opacity transition-transform duration-300 ease-out pointer-events-none z-30 ${hoveredHofIndex === 2 ? '-translate-y-1' : 'translate-y-2'}`}>
+                            {(() => {
+                              const summary = buildSkillsSummary(data.topEmployees[2]);
+                              return (
+                                <div className="bg-black/95 border border-white/10 rounded-2xl p-3 shadow-2xl">
+                                  <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Habilidades</div>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Atendimento</span><span className="font-mono text-white">{summary.atendimento}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Proatividade</span><span className="font-mono text-white">{summary.proatividade}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Tratamento</span><span className="font-mono text-white">{summary.tratamento}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Agilidade</span><span className="font-mono text-white">{summary.agilidade}/5</span></div>
+                                    <div className="flex items-center justify-between text-[11px] text-gray-300"><span>Dificuldade</span><span className="font-mono text-white">{summary.dificuldade}/5</span></div>
+                                  </div>
+                                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-300">
+                                    <span>Resolução</span>
+                                    <span className="font-mono text-white">{summary.resolutionRate}%</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                       <div className="absolute -top-3 -right-3 w-8 h-8 bg-amber-700 text-white rounded-lg flex items-center justify-center font-black text-sm shadow-lg">3</div>

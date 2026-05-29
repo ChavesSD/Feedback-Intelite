@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useAuth, type User } from '../context/AuthContext';
-import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, Edit2, ThumbsUp, ThumbsDown, X, Save, MessageSquare, Smartphone, Send, Paperclip } from 'lucide-react';
+import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, Edit2, ThumbsUp, ThumbsDown, X, Save, MessageSquare, Smartphone, Send, Paperclip, Star } from 'lucide-react';
 import Avatar from './Avatar';
 
 const UserManagement = () => {
   const { users, addUser, updateUser, deleteUser, user: currentUser, apiFetch } = useAuth();
   const safeUsers = Array.isArray(users) ? users : [];
+  const defaultSkills: NonNullable<User['skills']> = { atendimento: 0, proatividade: 0, tratamento: 0, agilidade: 0, dificuldade: 0 };
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -26,12 +27,33 @@ const UserManagement = () => {
   const [editPhone, setEditPhone] = useState('');
   const [editSector, setEditSector] = useState<'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Geral');
   const [editRole, setEditRole] = useState<'employee' | 'supervisor'>('employee');
+  const [editSkills, setEditSkills] = useState<NonNullable<User['skills']>>(defaultSkills);
+  const [editResolutionRate, setEditResolutionRate] = useState(0);
 
   // Quick Feedback State
   const [feedbackUser, setFeedbackUser] = useState<User | null>(null);
   const [feedbackContent, setFeedbackContent] = useState('');
   const [feedbackAttachment, setFeedbackAttachment] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<'positive' | 'negative' | null>(null);
+
+  type SkillKey = keyof NonNullable<User['skills']>;
+  const skillFields: { key: SkillKey; label: string }[] = [
+    { key: 'atendimento', label: 'Atendimento' },
+    { key: 'proatividade', label: 'Proatividade' },
+    { key: 'tratamento', label: 'Tratamento' },
+    { key: 'agilidade', label: 'Agilidade' },
+    { key: 'dificuldade', label: 'Dificuldade' }
+  ];
+
+  const setSkillValue = (key: SkillKey, value: number) => {
+    const clamped = Math.max(0, Math.min(5, Math.round(value)));
+    setEditSkills((prev) => ({ ...prev, [key]: clamped }));
+  };
+
+  const setResolutionRateValue = (value: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    setEditResolutionRate(clamped);
+  };
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
@@ -152,6 +174,8 @@ const UserManagement = () => {
     setEditPhone(user.phone || '');
     setEditSector(user.sector || 'Geral');
     setEditRole(user.role);
+    setEditSkills({ ...defaultSkills, ...(user.skills ?? {}) });
+    setEditResolutionRate(typeof user.resolutionRate === 'number' ? user.resolutionRate : 0);
     setEditPassword('');
   };
 
@@ -166,7 +190,9 @@ const UserManagement = () => {
         avatar: editAvatar,
         phone: editPhone,
         sector: editSector,
-        role: editRole
+        role: editRole,
+        skills: editSkills,
+        resolutionRate: editResolutionRate
       });
       setEditingUser(null);
       setLoading(false);
@@ -443,6 +469,59 @@ const UserManagement = () => {
                 <div className="relative group">
                   <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                   <input type="url" placeholder="URL da Foto" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none" value={editAvatar} onChange={(e) => setEditAvatar(e.target.value)} />
+                </div>
+                
+                <div className="p-5 bg-white/[0.02] border border-white/5 rounded-2xl">
+                  <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Habilidades</p>
+                  <div className="space-y-3">
+                    {skillFields.map(({ key, label }) => {
+                      const value = editSkills[key] ?? 0;
+                      return (
+                        <div key={key} className="flex items-center justify-between gap-4">
+                          <span className="text-sm text-gray-300 font-bold">{label}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setSkillValue(key, 0)}
+                              className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${
+                                value === 0 ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400' : 'bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10'
+                              }`}
+                              title="Definir 0"
+                            >
+                              0
+                            </button>
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => setSkillValue(key, s)}
+                                className="p-1 rounded-md hover:bg-white/10 transition-all"
+                                title={`Definir ${s}`}
+                              >
+                                <Star className={`w-4 h-4 ${value >= s ? 'text-yellow-500 fill-yellow-500' : 'text-gray-700'}`} />
+                              </button>
+                            ))}
+                            <span className="ml-2 text-xs text-gray-500 font-mono w-5 text-right">{value}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-sm text-gray-300 font-bold">Taxa de Resolução</span>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        className="w-28 px-4 py-2 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                        value={editResolutionRate}
+                        onChange={(e) => setResolutionRateValue(Number(e.target.value))}
+                      />
+                      <span className="text-xs text-gray-500 font-black">%</span>
+                    </div>
+                  </div>
                 </div>
               <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-xl shadow-purple-900/20">
                 {loading ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Save className="w-5 h-5" /> Salvar Alterações</>}
