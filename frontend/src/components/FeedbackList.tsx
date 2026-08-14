@@ -53,7 +53,7 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
   if (loading) {
     return (
       <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-12 flex flex-col items-center justify-center gap-4">
-        <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-indigo-400/30 border-t-indigo-300 rounded-full animate-spin"></div>
         <p className="text-gray-500 text-sm font-medium animate-pulse">Carregando feedbacks...</p>
       </div>
     );
@@ -63,8 +63,8 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
     <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm">
       <div className="px-6 py-5 border-b border-white/10 bg-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-500/10 p-2 rounded-lg">
-            <MessageSquare className="w-5 h-5 text-blue-500" />
+          <div className="bg-indigo-500/10 p-2 rounded-lg">
+            <MessageSquare className="w-5 h-5 text-indigo-300" />
           </div>
           <h2 className="text-xl font-bold text-white">{mode === 'sent' ? 'Feedbacks Enviados' : 'Feedbacks Recebidos'}</h2>
         </div>
@@ -76,7 +76,7 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
               onClick={() => setFilter(s)}
               className={`text-[10px] px-3 py-1.5 rounded-full font-black uppercase tracking-widest transition-all border ${
                 filter === s 
-                  ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20' 
+                  ? 'bg-indigo-500 border-indigo-400 text-white' 
                   : 'bg-white/5 border-white/5 text-gray-500 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -101,9 +101,9 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                 key={feedback._id} 
                 className={`group relative p-5 border rounded-xl transition-all duration-300 ${
                   feedback.type === 'positive' 
-                    ? 'bg-green-500/[0.03] border-green-500/10 hover:bg-green-500/[0.05]' 
+                    ? 'bg-emerald-500/[0.06] border-emerald-400/20 hover:bg-emerald-500/[0.09]' 
                     : feedback.type === 'negative'
-                    ? 'bg-red-500/[0.03] border-red-500/10 hover:bg-red-500/[0.05]'
+                    ? 'bg-rose-500/[0.06] border-rose-400/20 hover:bg-rose-500/[0.09]'
                     : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.04]'
                 }`}
               >
@@ -111,10 +111,10 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${
                       feedback.type === 'positive'
-                        ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                        ? 'bg-emerald-500/10 border-emerald-400/20 text-emerald-300'
                         : feedback.type === 'negative'
-                        ? 'bg-red-500/10 border-red-500/20 text-red-400'
-                        : 'bg-gradient-to-br from-blue-600/20 to-purple-600/20 border-white/10 text-blue-400'
+                        ? 'bg-rose-500/10 border-rose-400/20 text-rose-300'
+                        : 'bg-white/5 border-white/10 text-zinc-400'
                     }`}>
                       {feedback.type === 'positive' ? <ThumbsUp className="w-5 h-5" /> : 
                        feedback.type === 'negative' ? <ThumbsDown className="w-5 h-5" /> : 
@@ -122,7 +122,7 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-white group-hover:text-blue-400 transition-colors">
+                        <p className="font-bold text-white group-hover:text-zinc-200 transition-colors">
                           {mode === 'sent'
                             ? `Para: ${users.find(u => u._id === feedback.receiverId)?.name || 'Usuário'}`
                             : (feedback.isAnonymous ? 'Remetente Anônimo' : feedback.senderName)}
@@ -133,9 +133,9 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                           </span>
                         )}
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight ${
-                          feedback.receiverSector === 'Suporte' ? 'bg-blue-500/10 text-blue-400' :
-                          feedback.receiverSector === 'Comercial' ? 'bg-green-500/10 text-green-400' :
-                          feedback.receiverSector === 'RH' ? 'bg-pink-500/10 text-pink-400' :
+                          feedback.receiverSector === 'Suporte' ? 'bg-indigo-500/10 text-indigo-300' :
+                          feedback.receiverSector === 'Comercial' ? 'bg-amber-400/10 text-amber-300' :
+                          feedback.receiverSector === 'RH' ? 'bg-violet-500/10 text-violet-300' :
                           'bg-gray-500/10 text-gray-400'
                         }`}>
                           {feedback.receiverSector}
@@ -157,22 +157,22 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                   </div>
                   
                   {feedback.type === 'neutral' && (
-                    <div className="flex items-center gap-1 bg-yellow-500/10 border border-yellow-500/20 px-3 py-1.5 rounded-lg shadow-inner">
-                      <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-                      <span className="text-sm font-black text-yellow-500">
+                    <div className="flex items-center gap-1 bg-amber-400/10 border border-amber-400/20 px-3 py-1.5 rounded-lg">
+                      <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                      <span className="text-sm font-black text-amber-300">
                         {feedback.rating.toFixed(1)}
                       </span>
                     </div>
                   )}
 
                   {feedback.type === 'positive' && (
-                    <span className="text-[10px] font-black text-green-500 uppercase tracking-widest bg-green-500/10 px-2 py-1 rounded border border-green-500/20">
+                    <span className="text-[10px] font-black text-emerald-300 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded border border-emerald-400/20">
                       Positivo
                     </span>
                   )}
 
                   {feedback.type === 'negative' && (
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest bg-red-500/10 px-2 py-1 rounded border border-red-500/20">
+                    <span className="text-[10px] font-black text-rose-300 uppercase tracking-widest bg-rose-500/10 px-2 py-1 rounded border border-rose-400/20">
                       Negativo
                     </span>
                   )}
@@ -181,7 +181,7 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                     <button
                       type="button"
                       onClick={() => handleDelete(feedback._id)}
-                      className="ml-3 p-2 rounded-xl border border-white/10 bg-white/[0.02] text-gray-500 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all"
+                      className="ml-3 p-2 rounded-xl border border-white/10 bg-white/[0.02] text-gray-500 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all"
                       title="Excluir feedback"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -191,9 +191,9 @@ const FeedbackList: React.FC<FeedbackListProps> = ({ feedbacks, loading, mode = 
                 
                 <div className="relative">
                   <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-full ${
-                    feedback.type === 'positive' ? 'bg-green-500/30' : 
-                    feedback.type === 'negative' ? 'bg-red-500/30' : 
-                    'bg-blue-500/30'
+                    feedback.type === 'positive' ? 'bg-emerald-400/70' : 
+                    feedback.type === 'negative' ? 'bg-rose-400/70' : 
+                    'bg-indigo-400/40'
                   }`}></div>
                   <p className="text-gray-400 text-sm leading-relaxed pl-4 italic">
                     "{feedback.content}"

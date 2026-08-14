@@ -4,16 +4,14 @@ import FeedbackList, { type Feedback } from '../components/FeedbackList';
 import FeedbackForm from '../components/FeedbackForm';
 import UserManagement from '../components/UserManagement';
 import DashboardStats from '../components/DashboardStats';
-import WhatsAppIntegration from '../components/WhatsAppIntegration';
-import EventsBoard from '../components/EventsBoard';
 import Avatar from '../components/Avatar';
-import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Smartphone, CalendarDays, Star } from 'lucide-react';
+import { LogOut, User as UserIcon, Info, Users, MessageSquare, BarChart3, Settings, Key, Image as ImageIcon, X, Save, Sun, Moon, Menu, Star } from 'lucide-react';
 
 const Dashboard = () => {
   const { user, logout, updateUser, theme, toggleTheme, apiFetch, apiFetchJson } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [feedbackView, setFeedbackView] = useState<'received' | 'sent'>('received');
-  const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats' | 'whatsapp' | 'events'>('stats');
+  const [activeTab, setActiveTab] = useState<'feedbacks' | 'management' | 'stats'>('stats');
   const [loading, setLoading] = useState(true);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
@@ -21,7 +19,6 @@ const Dashboard = () => {
   // Profile Update State
   const [profileName, setProfileName] = useState(user?.name || '');
   const [profileAvatar, setProfileAvatar] = useState(user?.avatar || '');
-  const [profilePhone, setProfilePhone] = useState(user?.phone || '');
   const [profilePassword, setProfilePassword] = useState('');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [avatarFileInputKey, setAvatarFileInputKey] = useState(0);
@@ -30,7 +27,6 @@ const Dashboard = () => {
     if (user) {
       setProfileName(user.name);
       setProfileAvatar(user.avatar || '');
-      setProfilePhone(user.phone || '');
     }
   }, [user]);
 
@@ -70,7 +66,6 @@ const Dashboard = () => {
         username: user.username,
         sector: user.sector,
         avatar: profileAvatar,
-        phone: profilePhone,
         password: profilePassword || undefined
       });
       alert('Perfil atualizado com sucesso!');
@@ -126,9 +121,15 @@ const Dashboard = () => {
 
       if (response.ok) {
         fetchFeedbacks();
+        return true;
       }
+      const err = await response.json().catch(() => ({}));
+      alert(err.message || 'Erro ao enviar feedback');
+      return false;
     } catch (error) {
       console.error('Erro ao enviar feedback:', error);
+      alert('Erro ao enviar feedback');
+      return false;
     }
   };
 
@@ -146,7 +147,7 @@ const Dashboard = () => {
     : '0.0';
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-blue-500/30 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-[#08080c] text-white font-sans selection:bg-indigo-400/25 flex flex-col md:flex-row">
       {/* Sidebar Navigation (Desktop) */}
       <aside className={`fixed left-0 top-0 h-full hidden md:flex flex-col py-8 border-r border-white/5 bg-[#050505] z-20 transition-all duration-300 ${isSidebarExpanded ? 'w-64 px-6' : 'w-20 items-center'}`}>
         <button 
@@ -159,7 +160,7 @@ const Dashboard = () => {
         <nav className="flex flex-col gap-4 flex-1 w-full">
           <button 
             onClick={() => setActiveTab('stats')}
-            className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'stats' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'stats' ? 'bg-indigo-500/15 text-indigo-100' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             title="Dashboard"
           >
             <BarChart3 className="w-6 h-6 shrink-0" />
@@ -168,48 +169,28 @@ const Dashboard = () => {
 
           <button 
             onClick={() => setActiveTab('feedbacks')}
-            className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'feedbacks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'feedbacks' ? 'bg-indigo-500/15 text-indigo-100' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             title="Feedbacks"
           >
             <MessageSquare className="w-6 h-6 shrink-0" />
             {isSidebarExpanded && <span className="font-bold text-sm">Feedbacks</span>}
           </button>
-
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'events' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-            title="Eventos"
-          >
-            <CalendarDays className="w-6 h-6 shrink-0" />
-            {isSidebarExpanded && <span className="font-bold text-sm">Eventos</span>}
-          </button>
           
           {isSupervisor && (
             <button 
               onClick={() => setActiveTab('management')}
-              className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'management' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+              className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'management' ? 'bg-indigo-500/15 text-indigo-100' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
               title="Gerenciar Equipe"
             >
               <Users className="w-6 h-6 shrink-0" />
               {isSidebarExpanded && <span className="font-bold text-sm">Gerenciar Equipe</span>}
             </button>
           )}
-
-          {user?.username === 'deyvison@intelite.com' && (
-            <button 
-              onClick={() => setActiveTab('whatsapp')}
-              className={`flex items-center gap-4 transition-all p-3 rounded-xl w-full ${!isSidebarExpanded ? 'justify-center' : ''} ${activeTab === 'whatsapp' ? 'bg-green-600 text-white shadow-lg shadow-green-600/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-              title="WhatsApp"
-            >
-              <Smartphone className="w-6 h-6 shrink-0" />
-              {isSidebarExpanded && <span className="font-bold text-sm">WhatsApp</span>}
-            </button>
-          )}
         </nav>
 
         <button 
           onClick={logout}
-          className={`flex items-center gap-4 text-red-500/70 hover:text-red-500 transition-all p-3 rounded-xl mt-auto w-full hover:bg-red-500/5 ${!isSidebarExpanded ? 'justify-center' : ''}`}
+          className={`flex items-center gap-4 text-zinc-500 hover:text-white transition-all p-3 rounded-xl mt-auto w-full hover:bg-white/5 ${!isSidebarExpanded ? 'justify-center' : ''}`}
           title="Sair"
         >
           <LogOut className="w-6 h-6 shrink-0" />
@@ -223,7 +204,7 @@ const Dashboard = () => {
         <header className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-white/5 px-6 py-5 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-black tracking-tight text-white uppercase">
-              {(activeTab === 'stats' ? 'Dashboard' : activeTab === 'management' ? 'Gerenciar Equipe' : activeTab === 'whatsapp' ? 'WhatsApp' : activeTab === 'events' ? 'Eventos' : 'Feedbacks')} <span className="text-blue-500">Overview</span>
+              {(activeTab === 'stats' ? 'Dashboard' : activeTab === 'management' ? 'Gerenciar Equipe' : 'Feedbacks')} <span className="text-indigo-300">Overview</span>
             </h1>
             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-0.5">
               Performance & Team Insights
@@ -242,19 +223,19 @@ const Dashboard = () => {
 
             <div className="hidden sm:flex flex-col items-end mr-2">
               <span className="text-sm font-bold text-white">{user?.name}</span>
-              <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">
+              <span className="text-[10px] font-black text-indigo-300/80 uppercase tracking-widest">
                 {isSupervisor ? 'Core Management' : `${user?.sector} Team`}
               </span>
             </div>
             <button 
               onClick={() => setIsProfileModalOpen(true)}
-              className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-purple-600 p-[1px] hover:scale-105 transition-transform group relative"
+              className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-300 to-violet-700 p-[1px] hover:scale-105 transition-transform group relative"
               title="Meu Perfil"
             >
               <div className="w-full h-full rounded-2xl bg-black flex items-center justify-center overflow-hidden">
                 <Avatar src={user?.avatar} name={user?.name || 'Usuário'} className="w-full h-full object-cover" />
               </div>
-              <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-lg p-1 border border-black group-hover:bg-blue-500 transition-colors">
+              <div className="absolute -bottom-1 -right-1 bg-indigo-600 rounded-lg p-1 border border-black group-hover:bg-indigo-500 transition-colors">
                 <Settings className="w-3 h-3 text-white" />
               </div>
             </button>
@@ -272,7 +253,7 @@ const Dashboard = () => {
                     onClick={() => setFeedbackView('received')}
                     className={`text-[10px] px-3 py-2 rounded-xl font-black uppercase tracking-widest transition-all border ${
                       feedbackView === 'received'
-                        ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20'
+                        ? 'bg-indigo-500 border-indigo-400 text-white'
                         : 'bg-white/5 border-white/5 text-gray-500 hover:text-white hover:bg-white/10'
                     }`}
                   >
@@ -282,7 +263,7 @@ const Dashboard = () => {
                     onClick={() => setFeedbackView('sent')}
                     className={`text-[10px] px-3 py-2 rounded-xl font-black uppercase tracking-widest transition-all border ${
                       feedbackView === 'sent'
-                        ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20'
+                        ? 'bg-indigo-500 border-indigo-400 text-white'
                         : 'bg-white/5 border-white/5 text-gray-500 hover:text-white hover:bg-white/10'
                     }`}
                   >
@@ -298,10 +279,9 @@ const Dashboard = () => {
                 <FeedbackForm onSend={handleSendFeedback} />
                 
                 {isSupervisor && (
-                  <div className="bg-gradient-to-br from-purple-600/10 to-transparent border border-purple-500/20 rounded-3xl p-8 relative overflow-hidden group">
-                    <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-purple-500/10 blur-3xl rounded-full group-hover:bg-purple-500/20 transition-all"></div>
+                  <div className="bg-white/[0.03] border border-white/10 rounded-3xl p-8 relative overflow-hidden group">
                     <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                      <Users className="w-5 h-5 text-purple-500" />
+                      <Users className="w-5 h-5 text-indigo-300" />
                       Visão do Gestor
                     </h3>
                     <p className="text-gray-400 text-sm leading-relaxed mb-6">
@@ -310,17 +290,16 @@ const Dashboard = () => {
                     </p>
                     <button 
                       onClick={() => setActiveTab('management')}
-                      className="w-full py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-purple-400 font-bold transition-all text-sm uppercase tracking-widest"
+                      className="w-full py-3 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-400/25 rounded-xl text-indigo-200 font-bold transition-all text-sm uppercase tracking-widest"
                     >
                       Gerenciar Usuários
                     </button>
                   </div>
                 )}
 
-                <div className="bg-gradient-to-br from-blue-600/10 to-transparent border border-blue-500/20 rounded-3xl p-8 relative overflow-hidden group">
-                  <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-blue-500/10 blur-3xl rounded-full group-hover:bg-blue-500/20 transition-all"></div>
+                <div className="bg-white/[0.03] border border-white/10 rounded-3xl p-8 relative overflow-hidden group">
                   <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                    <Info className="w-5 h-5 text-blue-500" />
+                    <Info className="w-5 h-5 text-indigo-300" />
                     Performance Insight
                   </h3>
                   <p className="text-gray-400 text-sm leading-relaxed mb-6">
@@ -329,15 +308,15 @@ const Dashboard = () => {
                   <div className="flex gap-4">
                     <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex-1">
                       <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Positivos</p>
-                      <p className="text-xl font-black text-green-500">{positiveFeedbacks}</p>
+                      <p className="text-xl font-black text-emerald-400">{positiveFeedbacks}</p>
                     </div>
                     <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex-1">
                       <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Negativos</p>
-                      <p className="text-xl font-black text-red-500">{negativeFeedbacks}</p>
+                      <p className="text-xl font-black text-rose-400">{negativeFeedbacks}</p>
                     </div>
                     <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex-1">
                       <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Média</p>
-                      <p className="text-xl font-black text-blue-500">{performanceAverage}</p>
+                      <p className="text-xl font-black text-amber-400">{performanceAverage}</p>
                     </div>
                   </div>
                 </div>
@@ -356,18 +335,6 @@ const Dashboard = () => {
               <UserManagement />
             </div>
           )}
-
-          {activeTab === 'whatsapp' && user?.username === 'deyvison@intelite.com' && (
-            <div className="animate-in fade-in duration-500">
-              <WhatsAppIntegration />
-            </div>
-          )}
-
-          {activeTab === 'events' && (
-            <div className="animate-in fade-in duration-500">
-              <EventsBoard />
-            </div>
-          )}
         </main>
       </div>
 
@@ -375,7 +342,7 @@ const Dashboard = () => {
       <nav className="md:hidden fixed bottom-0 left-0 w-full bg-[#050505] border-t border-white/5 px-6 py-3 flex justify-around items-center z-20 overflow-x-auto">
         <button 
           onClick={() => setActiveTab('stats')}
-          className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'stats' ? 'text-blue-500' : 'text-gray-500'}`}
+          className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'stats' ? 'text-indigo-300' : 'text-gray-500'}`}
         >
           <BarChart3 className="w-6 h-6" />
           <span className="text-[10px] font-bold">Dashboard</span>
@@ -383,43 +350,25 @@ const Dashboard = () => {
 
         <button 
           onClick={() => setActiveTab('feedbacks')}
-          className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'feedbacks' ? 'text-blue-500' : 'text-gray-500'}`}
+          className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'feedbacks' ? 'text-indigo-300' : 'text-gray-500'}`}
         >
           <MessageSquare className="w-6 h-6" />
           <span className="text-[10px] font-bold">Feedbacks</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('events')}
-          className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'events' ? 'text-blue-500' : 'text-gray-500'}`}
-        >
-          <CalendarDays className="w-6 h-6" />
-          <span className="text-[10px] font-bold">Eventos</span>
         </button>
         
         {isSupervisor && (
           <button 
             onClick={() => setActiveTab('management')}
-            className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'management' ? 'text-blue-500' : 'text-gray-500'}`}
+            className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'management' ? 'text-indigo-300' : 'text-gray-500'}`}
           >
             <Users className="w-6 h-6" />
             <span className="text-[10px] font-bold">Equipe</span>
           </button>
         )}
 
-        {user?.username === 'deyvison@intelite.com' && (
-          <button 
-            onClick={() => setActiveTab('whatsapp')}
-            className={`flex flex-col items-center gap-1 shrink-0 ${activeTab === 'whatsapp' ? 'text-green-500' : 'text-gray-500'}`}
-          >
-            <Smartphone className="w-6 h-6" />
-            <span className="text-[10px] font-bold">WhatsApp</span>
-          </button>
-        )}
-
         <button 
           onClick={() => setIsProfileModalOpen(true)}
-          className={`flex flex-col items-center gap-1 shrink-0 ${isProfileModalOpen ? 'text-blue-500' : 'text-gray-500'}`}
+          className={`flex flex-col items-center gap-1 shrink-0 ${isProfileModalOpen ? 'text-indigo-300' : 'text-gray-500'}`}
         >
           <Settings className="w-6 h-6" />
           <span className="text-[10px] font-bold">Perfil</span>
@@ -427,7 +376,7 @@ const Dashboard = () => {
 
         <button 
           onClick={logout}
-          className="flex flex-col items-center gap-1 shrink-0 text-red-500/70"
+          className="flex flex-col items-center gap-1 shrink-0 text-slate-500"
         >
           <LogOut className="w-6 h-6" />
           <span className="text-[10px] font-bold">Sair</span>
@@ -435,15 +384,15 @@ const Dashboard = () => {
       </nav>
 
       {/* Background Glows */}
-      <div className={`fixed top-0 right-0 w-[500px] h-[500px] blur-[150px] pointer-events-none -z-10 transition-colors duration-500 ${theme === 'dark' ? 'bg-blue-600/5' : 'bg-blue-500/30'}`}></div>
-      <div className={`fixed bottom-0 left-0 w-[500px] h-[500px] blur-[150px] pointer-events-none -z-10 transition-colors duration-500 ${theme === 'dark' ? 'bg-purple-600/5' : 'bg-purple-400/30'}`}></div>
+      <div className={`fixed top-0 right-0 w-[500px] h-[500px] blur-[150px] pointer-events-none -z-10 transition-colors duration-500 ${theme === 'dark' ? 'bg-indigo-600/10' : 'bg-indigo-300/35'}`}></div>
+      <div className={`fixed bottom-0 left-0 w-[500px] h-[500px] blur-[150px] pointer-events-none -z-10 transition-colors duration-500 ${theme === 'dark' ? 'bg-amber-500/8' : 'bg-amber-200/30'}`}></div>
 
       {/* Profile Update Modal */}
       {isProfileModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex justify-between items-center px-8 pt-8 pb-6 shrink-0">
-              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Meu <span className="text-blue-500">Perfil</span></h3>
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Meu <span className="text-indigo-300">Perfil</span></h3>
               <button onClick={() => setIsProfileModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-all">
                 <X className="w-6 h-6" />
               </button>
@@ -452,7 +401,7 @@ const Dashboard = () => {
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-8 pb-8">
               <form onSubmit={handleUpdateProfile} className="space-y-6">
               <div className="flex flex-col items-center mb-6">
-                <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-600 to-purple-600 p-[1px] mb-4">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-300 to-violet-700 p-[1px] mb-4">
                   <div className="w-full h-full rounded-3xl bg-black flex items-center justify-center overflow-hidden">
                     <Avatar src={profileAvatar} name={profileName || 'Usuário'} className="w-full h-full object-cover" />
                   </div>
@@ -462,30 +411,30 @@ const Dashboard = () => {
 
               <div className="space-y-4">
                 <div className="relative group">
-                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-blue-500 transition-colors" />
+                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
                   <input 
                     type="text" 
                     required 
                     placeholder="Nome Completo" 
-                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all" 
+                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" 
                     value={profileName} 
                     onChange={(e) => setProfileName(e.target.value)} 
                   />
                 </div>
 
                 <div className="relative group">
-                  <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-blue-500 transition-colors" />
+                  <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
                   <input 
                     type="url" 
                     placeholder="URL da Foto de Perfil" 
-                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all" 
+                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" 
                     value={profileAvatar} 
                     onChange={(e) => setProfileAvatar(e.target.value)} 
                   />
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 cursor-pointer transition-all">
-                    <ImageIcon className="w-4 h-4 text-blue-500" />
+                    <ImageIcon className="w-4 h-4 text-zinc-400" />
                     Enviar imagem
                     <input
                       key={avatarFileInputKey}
@@ -501,22 +450,11 @@ const Dashboard = () => {
                 </div>
 
                 <div className="relative group">
-                  <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-blue-500 transition-colors" />
-                  <input 
-                    type="text" 
-                    placeholder="WhatsApp (ex: 5511999999999)" 
-                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all" 
-                    value={profilePhone} 
-                    onChange={(e) => setProfilePhone(e.target.value)} 
-                  />
-                </div>
-
-                <div className="relative group">
-                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-blue-500 transition-colors" />
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
                   <input 
                     type="password" 
                     placeholder="Nova Senha (deixe em branco para manter)" 
-                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all" 
+                    className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" 
                     value={profilePassword} 
                     onChange={(e) => setProfilePassword(e.target.value)} 
                   />
@@ -546,7 +484,7 @@ const Dashboard = () => {
                               <span className="text-sm text-gray-300 font-bold">{label}</span>
                               <div className="flex items-center gap-1">
                                 {[1, 2, 3, 4, 5].map((s) => (
-                                  <Star key={s} className={`w-4 h-4 ${value >= s ? 'text-yellow-500 fill-yellow-500' : 'text-gray-700'}`} />
+                                  <Star key={s} className={`w-4 h-4 ${value >= s ? 'text-amber-400 fill-amber-400' : 'text-gray-700'}`} />
                                 ))}
                                 <span className="ml-2 text-xs text-gray-500 font-mono w-5 text-right">{value}</span>
                               </div>
@@ -566,7 +504,7 @@ const Dashboard = () => {
               <button 
                 type="submit" 
                 disabled={isUpdatingProfile} 
-                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-xl shadow-blue-900/20"
+                className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2"
               >
                 {isUpdatingProfile ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

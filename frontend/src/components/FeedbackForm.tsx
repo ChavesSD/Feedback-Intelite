@@ -3,7 +3,7 @@ import { Send, Info, ThumbsUp, ThumbsDown, Paperclip, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface FeedbackFormProps {
-  onSend: (receiverId: string, content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative', attachment?: string | null) => void;
+  onSend: (receiverId: string, content: string, rating: number, isAnonymous: boolean, type: 'positive' | 'negative', attachment?: string | null) => Promise<boolean | void> | boolean | void;
 }
 
 const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
@@ -20,6 +20,10 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
       if (items[i].type.indexOf('image') !== -1) {
         const file = items[i].getAsFile();
         if (file) {
+          if (file.size > 700 * 1024) {
+            alert('Imagem muito grande. Use até 700KB.');
+            return;
+          }
           const reader = new FileReader();
           reader.onload = (event) => {
             setAttachment(event.target?.result as string);
@@ -33,6 +37,11 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 700 * 1024) {
+        alert('Imagem muito grande. Use até 700KB.');
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         setAttachment(event.target?.result as string);
@@ -41,14 +50,16 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (content && receiverId) {
       const finalRating = selectedType === 'positive' ? 5 : 1;
-      onSend(receiverId, content, finalRating, isAnonymous, selectedType, attachment);
-      setContent('');
-      setAttachment(null);
-      setSelectedType('positive');
+      const ok = await onSend(receiverId, content, finalRating, isAnonymous, selectedType, attachment);
+      if (ok !== false) {
+        setContent('');
+        setAttachment(null);
+        setSelectedType('positive');
+      }
     }
   };
 
@@ -59,8 +70,8 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
     <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm">
       <div className="px-6 py-5 border-b border-white/10 bg-white/5 flex items-center justify-between">
         <h2 className="text-xl font-bold text-white flex items-center gap-3">
-          <div className="bg-green-500/10 p-2 rounded-lg">
-            <Send className="w-5 h-5 text-green-500" />
+          <div className="bg-indigo-500/10 p-2 rounded-lg">
+            <Send className="w-5 h-5 text-indigo-300" />
           </div>
           Enviar Feedback
         </h2>
@@ -75,7 +86,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
             required
             value={receiverId}
             onChange={(e) => setReceiverId(e.target.value)}
-            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-green-500/30 focus:border-green-500 outline-none transition-all"
+            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all"
           >
             <option value="" disabled style={{ backgroundColor: '#0a0a0a', color: '#ffffff' }}>
               Selecione um usuário
@@ -101,7 +112,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
           <div className="relative group">
             <textarea
               required
-              className="w-full px-5 py-4 bg-white/[0.03] border border-white/10 rounded-xl focus:ring-2 focus:ring-green-500/30 focus:border-green-500 outline-none text-white transition-all placeholder:text-gray-700 min-h-[160px] resize-none"
+              className="w-full px-5 py-4 bg-white/[0.03] border border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none text-white transition-all placeholder:text-gray-700 min-h-[160px] resize-none"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onPaste={handlePaste}
@@ -127,7 +138,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
             <button 
               type="button"
               onClick={() => setAttachment(null)}
-              className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-all"
+              className="absolute -top-2 -right-2 p-1.5 bg-slate-600 text-white rounded-full shadow-lg hover:bg-slate-500 transition-all"
             >
               <X className="w-3 h-3" />
             </button>
@@ -145,8 +156,8 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
                 onClick={() => setSelectedType('positive')}
                 className={`flex-1 py-3 rounded-lg transition-all flex items-center justify-center gap-2 font-bold text-xs border ${
                   selectedType === 'positive'
-                    ? 'bg-green-600 border-green-500 text-white shadow-lg shadow-green-900/40'
-                    : 'bg-green-600/5 border-green-500/20 text-green-500 hover:bg-green-600/10'
+                    ? 'bg-emerald-500 border-emerald-400 text-black'
+                    : 'bg-emerald-500/10 border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/15'
                 }`}
               >
                 <ThumbsUp className="w-4 h-4" /> POSITIVO
@@ -156,8 +167,8 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
                 onClick={() => setSelectedType('negative')}
                 className={`flex-1 py-3 rounded-lg transition-all flex items-center justify-center gap-2 font-bold text-xs border ${
                   selectedType === 'negative'
-                    ? 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-900/40'
-                    : 'bg-red-600/5 border-red-500/20 text-red-500 hover:bg-red-600/10'
+                    ? 'bg-rose-600 border-rose-500 text-white'
+                    : 'bg-rose-500/10 border-rose-400/20 text-rose-300 hover:bg-rose-500/15'
                 }`}
               >
                 <ThumbsDown className="w-4 h-4" /> NEGATIVO
@@ -175,13 +186,13 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
                 onClick={() => setIsAnonymous(!isAnonymous)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition-all ${
                   isAnonymous
-                    ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                    ? 'bg-indigo-500/10 border-indigo-400/30 text-indigo-200'
                     : 'bg-black/40 border-white/10 text-gray-500 hover:bg-white/[0.03] hover:text-white'
                 }`}
               >
                 <div
                   className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
-                    isAnonymous ? 'bg-blue-500 border-blue-500' : 'border-white/20'
+                    isAnonymous ? 'bg-indigo-500 border-indigo-500' : 'border-white/20'
                   }`}
                 >
                   {isAnonymous && <div className="w-2 h-2 bg-white rounded-full"></div>}
@@ -196,7 +207,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ onSend }) => {
         <button
           type="submit"
           disabled={!content || !receiverId}
-          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-600 text-white font-black py-4 rounded-xl transition-all shadow-xl shadow-green-900/20 active:scale-[0.98] flex items-center justify-center gap-3 text-lg tracking-tight"
+          className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-black py-4 rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-3 text-lg tracking-tight"
         >
           <Send className="w-5 h-5" />
           Enviar Feedback Oficial

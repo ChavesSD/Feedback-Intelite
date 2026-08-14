@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth, type User } from '../context/AuthContext';
-import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, Edit2, ThumbsUp, ThumbsDown, X, Save, MessageSquare, Smartphone, Send, Paperclip, Star } from 'lucide-react';
+import { UserPlus, Trash2, Users, AtSign, UserCircle, Key, Image as ImageIcon, Edit2, ThumbsUp, ThumbsDown, X, Save, MessageSquare, Paperclip, Star } from 'lucide-react';
 import Avatar from './Avatar';
 
 const UserManagement = () => {
@@ -12,10 +12,8 @@ const UserManagement = () => {
   const [password, setPassword] = useState('');
   const [avatar, setAvatar] = useState('');
   const [avatarFileKey, setAvatarFileKey] = useState(0);
-  const [phone, setPhone] = useState('');
   const [sector, setSector] = useState<'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Geral');
   const [loading, setLoading] = useState(false);
-  const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
 
   // Edit State
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -24,7 +22,6 @@ const UserManagement = () => {
   const [editPassword, setEditPassword] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [editAvatarFileKey, setEditAvatarFileKey] = useState(0);
-  const [editPhone, setEditPhone] = useState('');
   const [editSector, setEditSector] = useState<'Suporte' | 'Comercial' | 'RH' | 'Geral'>('Geral');
   const [editRole, setEditRole] = useState<'employee' | 'supervisor'>('employee');
   const [editSkills, setEditSkills] = useState<NonNullable<User['skills']>>(defaultSkills);
@@ -61,6 +58,10 @@ const UserManagement = () => {
       if (items[i].type.indexOf('image') !== -1) {
         const file = items[i].getAsFile();
         if (file) {
+          if (file.size > 700 * 1024) {
+            alert('Imagem muito grande. Use até 700KB.');
+            return;
+          }
           const reader = new FileReader();
           reader.onload = (event) => {
             setFeedbackAttachment(event.target?.result as string);
@@ -74,6 +75,11 @@ const UserManagement = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 700 * 1024) {
+        alert('Imagem muito grande. Use até 700KB.');
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         setFeedbackAttachment(event.target?.result as string);
@@ -132,37 +138,26 @@ const UserManagement = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSendWelcome = async (userId: string) => {
-    try {
-      setSendingWelcome(userId);
-      const response = await apiFetch('/whatsapp/send-welcome', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId })
-      });
-      if (!response.ok) throw new Error('Erro ao enviar');
-      alert('Mensagem de boas-vindas enviada com sucesso!');
-    } catch (err) {
-      alert('Falha ao enviar mensagem via WhatsApp. Verifique a conexão do servidor.');
-    } finally {
-      setSendingWelcome(null);
-    }
-  };
-
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (name && username && password) {
+      if (password.length < 6) {
+        alert('A senha deve ter pelo menos 6 caracteres.');
+        return;
+      }
       setLoading(true);
-      await addUser({ name, username, password, avatar, sector, phone });
-      setName('');
-      setUsername('');
-      setPassword('');
-      setAvatar('');
-      setPhone('');
-      setSector('Geral');
-      setLoading(false);
+      try {
+        await addUser({ name, username, password, avatar, sector });
+        setName('');
+        setUsername('');
+        setPassword('');
+        setAvatar('');
+        setSector('Geral');
+      } catch (error: any) {
+        alert(error.message || 'Erro ao adicionar usuário');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -171,7 +166,6 @@ const UserManagement = () => {
     setEditName(user.name);
     setEditUsername(user.username);
     setEditAvatar(user.avatar || '');
-    setEditPhone(user.phone || '');
     setEditSector(user.sector || 'Geral');
     setEditRole(user.role);
     setEditSkills({ ...defaultSkills, ...(user.skills ?? {}) });
@@ -182,20 +176,28 @@ const UserManagement = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser && editName && editUsername) {
+      if (editPassword && editPassword.length < 6) {
+        alert('A senha deve ter pelo menos 6 caracteres.');
+        return;
+      }
       setLoading(true);
-      await updateUser(editingUser._id, {
-        name: editName,
-        username: editUsername,
-        password: editPassword || undefined,
-        avatar: editAvatar,
-        phone: editPhone,
-        sector: editSector,
-        role: editRole,
-        skills: editSkills,
-        resolutionRate: editResolutionRate
-      });
-      setEditingUser(null);
-      setLoading(false);
+      try {
+        await updateUser(editingUser._id, {
+          name: editName,
+          username: editUsername,
+          password: editPassword || undefined,
+          avatar: editAvatar,
+          sector: editSector,
+          role: editRole,
+          skills: editSkills,
+          resolutionRate: editResolutionRate
+        });
+        setEditingUser(null);
+      } catch (error: any) {
+        alert(error.message || 'Erro ao atualizar usuário');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -233,20 +235,14 @@ const UserManagement = () => {
     }
   };
 
-  const otherUsers = safeUsers.filter(u => {
-    if (u._id === currentUser?._id) return false;
-    if (currentUser?.role === 'supervisor') {
-      return true;
-    }
-    return true;
-  });
+  const otherUsers = safeUsers.filter(u => u._id !== currentUser?._id);
 
   return (
     <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-xl overflow-hidden backdrop-blur-sm h-full flex flex-col relative">
       <div className="px-6 py-5 border-b border-white/10 bg-white/5 flex items-center justify-between">
         <h2 className="text-xl font-bold text-white flex items-center gap-3">
-          <div className="bg-purple-500/10 p-2 rounded-lg">
-            <Users className="w-5 h-5 text-purple-500" />
+          <div className="bg-indigo-500/10 p-2 rounded-lg">
+            <Users className="w-5 h-5 text-indigo-300" />
           </div>
           Gerenciar Equipe
         </h2>
@@ -260,36 +256,32 @@ const UserManagement = () => {
         {!editingUser && (
           <form onSubmit={handleAdd} className="space-y-4 p-6 bg-white/[0.02] border border-white/5 rounded-2xl animate-in fade-in duration-300">
             <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center border border-white/10 overflow-hidden shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-zinc-600/30 to-zinc-800/40 flex items-center justify-center border border-white/10 overflow-hidden shrink-0">
                 <Avatar src={avatar} name={name || 'Novo membro'} className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 w-full">
-                <p className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-1">Novo Membro</p>
+                <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-1">Novo Membro</p>
                 <p className="text-xs text-gray-500 mb-3 italic">Insira os dados e uma URL de imagem para o perfil.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="relative group">
-                <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
-                <input type="text" required placeholder="Nome Completo" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all" value={name} onChange={(e) => setName(e.target.value)} />
+                <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
+                <input type="text" required placeholder="Nome Completo" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="relative group">
-                <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
-                <input type="text" required placeholder="Usuário de Login" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all" value={username} onChange={(e) => setUsername(e.target.value)} />
+                <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
+                <input type="text" required placeholder="Usuário de Login" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" value={username} onChange={(e) => setUsername(e.target.value)} />
               </div>
               <div className="relative group">
-                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
-                <input type="password" required placeholder="Senha de Acesso" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
+                <input type="password" required minLength={6} placeholder="Senha de Acesso" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <div className="relative group">
-                <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
-                <input type="text" placeholder="WhatsApp (ex: 5511999999999)" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </div>
-              <div className="relative group">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
+                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
                 <select 
                   required 
-                  className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all appearance-none"
+                  className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all appearance-none"
                   value={sector}
                   onChange={(e) => setSector(e.target.value as any)}
                 >
@@ -300,12 +292,12 @@ const UserManagement = () => {
                 </select>
               </div>
               <div className="relative group">
-                <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-purple-500 transition-colors" />
-                <input type="url" placeholder="URL da Foto (opcional)" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all" value={avatar} onChange={(e) => setAvatar(e.target.value)} />
+                <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-indigo-300 transition-colors" />
+                <input type="url" placeholder="URL da Foto (opcional)" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all" value={avatar} onChange={(e) => setAvatar(e.target.value)} />
               </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 cursor-pointer transition-all">
-                  <ImageIcon className="w-4 h-4 text-purple-500" />
+                  <ImageIcon className="w-4 h-4 text-zinc-400" />
                   Enviar imagem
                   <input
                     key={avatarFileKey}
@@ -320,7 +312,7 @@ const UserManagement = () => {
                 </span>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-900/20">
+            <button type="submit" disabled={loading} className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm">
               {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><UserPlus className="w-4 h-4" /> Adicionar à Equipe</>}
             </button>
           </form>
@@ -338,7 +330,7 @@ const UserManagement = () => {
               {otherUsers.map((emp) => (
                 <div key={emp._id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-white/[0.03] border border-white/5 rounded-2xl hover:bg-white/[0.05] transition-all group gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600/20 to-blue-600/20 flex items-center justify-center border border-white/10 overflow-hidden shadow-inner">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-zinc-600/30 to-zinc-800/40 flex items-center justify-center border border-white/10 overflow-hidden shadow-inner">
                       <Avatar src={emp.avatar} name={emp.name} className="w-full h-full object-cover" />
                     </div>
                     <div>
@@ -346,15 +338,15 @@ const UserManagement = () => {
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-xs text-gray-500 font-mono opacity-60">{emp.username.includes('@') ? emp.username : `@${emp.username}`}</p>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight ${
-                          emp.sector === 'Suporte' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                          emp.sector === 'Comercial' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                          emp.sector === 'RH' ? 'bg-pink-500/10 text-pink-400 border border-pink-500/20' :
+                          emp.sector === 'Suporte' ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-400/20' :
+                          emp.sector === 'Comercial' ? 'bg-amber-400/10 text-amber-300 border border-amber-400/20' :
+                          emp.sector === 'RH' ? 'bg-violet-500/10 text-violet-300 border border-violet-400/20' :
                           'bg-gray-500/10 text-gray-400 border border-gray-500/20'
                         }`}>
                           {emp.sector || 'Geral'}
                         </span>
                         {emp.role === 'supervisor' && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight bg-indigo-500/10 text-indigo-300 border border-indigo-400/20">
                             Supervisor
                           </span>
                         )}
@@ -363,23 +355,20 @@ const UserManagement = () => {
                   </div>
                   
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <button onClick={() => setFeedbackUser(emp)} className="flex-1 sm:flex-none p-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/20 transition-all flex items-center justify-center gap-2 text-xs font-bold" title="Enviar Feedback">
+                    <button onClick={() => setFeedbackUser(emp)} className="flex-1 sm:flex-none p-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-400/20 transition-all flex items-center justify-center gap-2 text-xs font-bold" title="Enviar Feedback">
                       <MessageSquare className="w-4 h-4" /> Feedback
                     </button>
-                    {emp.phone && (
-                      <button 
-                        onClick={() => handleSendWelcome(emp._id)}
-                        disabled={sendingWelcome === emp._id}
-                        className={`p-2.5 bg-green-500/10 text-green-500 rounded-xl border border-green-500/20 hover:bg-green-500/20 transition-all ${sendingWelcome === emp._id ? 'opacity-50 animate-pulse' : ''}`}
-                        title="Enviar Boas-vindas WhatsApp"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    )}
                     <button onClick={() => startEdit(emp)} className="p-2.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl border border-white/5 transition-all" title="Editar">
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button onClick={() => deleteUser(emp._id)} className="p-2.5 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl border border-white/5 transition-all" title="Remover">
+                    <button onClick={async () => {
+                      if (!window.confirm(`Remover ${emp.name}? Esta ação não pode ser desfeita.`)) return;
+                      try {
+                        await deleteUser(emp._id);
+                      } catch (error: any) {
+                        alert(error.message || 'Erro ao remover usuário');
+                      }
+                    }} className="p-2.5 text-gray-600 hover:text-slate-400 hover:bg-slate-400/10 rounded-xl border border-white/5 transition-all" title="Remover">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -395,13 +384,13 @@ const UserManagement = () => {
         <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl animate-in zoom-in duration-300 my-auto">
             <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Editar <span className="text-purple-500">Membro</span></h3>
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Editar <span className="text-indigo-300">Membro</span></h3>
               <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-all"><X className="w-6 h-6" /></button>
             </div>
             
             <form onSubmit={handleUpdate} className="space-y-6">
               <div className="flex flex-col items-center mb-6">
-                <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-purple-600 to-blue-600 p-[1px] mb-4">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-300 to-violet-700 p-[1px] mb-4">
                   <div className="w-full h-full rounded-3xl bg-black flex items-center justify-center overflow-hidden">
                     <Avatar src={editAvatar} name={editName || 'Membro'} className="w-full h-full object-cover" />
                   </div>
@@ -410,7 +399,7 @@ const UserManagement = () => {
               </div>
               <div className="flex items-center justify-center gap-3 -mt-2">
                 <label className="flex items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 cursor-pointer transition-all">
-                  <ImageIcon className="w-4 h-4 text-purple-500" />
+                  <ImageIcon className="w-4 h-4 text-zinc-400" />
                   Enviar imagem
                   <input
                     key={editAvatarFileKey}
@@ -428,29 +417,25 @@ const UserManagement = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="relative group">
                     <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                    <input type="text" required placeholder="Nome Completo" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                    <input type="text" required placeholder="Nome Completo" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 outline-none" value={editName} onChange={(e) => setEditName(e.target.value)} />
                   </div>
                   <div className="relative group">
                     <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                    <input type="text" required placeholder="Usuário" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none" value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+                    <input type="text" required placeholder="Usuário" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 outline-none" value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="relative group">
                     <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                    <input type="password" placeholder="Nova Senha (opcional)" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
-                  </div>
-                  <div className="relative group">
-                    <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                    <input type="text" placeholder="WhatsApp" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+                    <input type="password" placeholder="Nova Senha (opcional)" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 outline-none" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="relative group">
                     <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                    <select className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all appearance-none" value={editSector} onChange={(e) => setEditSector(e.target.value as any)}>
+                    <select className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all appearance-none" value={editSector} onChange={(e) => setEditSector(e.target.value as any)}>
                       <option value="Geral">Setor: Geral</option>
                       <option value="Suporte">Setor: Suporte</option>
                       <option value="Comercial">Setor: Comercial</option>
@@ -459,7 +444,7 @@ const UserManagement = () => {
                   </div>
                   <div className="relative group">
                     <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                    <select className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 outline-none transition-all appearance-none" value={editRole} onChange={(e) => setEditRole(e.target.value as any)}>
+                    <select className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none transition-all appearance-none" value={editRole} onChange={(e) => setEditRole(e.target.value as any)}>
                       <option value="employee">Função: Funcionário</option>
                       <option value="supervisor">Função: Supervisor</option>
                     </select>
@@ -468,7 +453,7 @@ const UserManagement = () => {
 
                 <div className="relative group">
                   <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                  <input type="url" placeholder="URL da Foto" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none" value={editAvatar} onChange={(e) => setEditAvatar(e.target.value)} />
+                  <input type="url" placeholder="URL da Foto" className="w-full pl-10 pr-4 py-3 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 outline-none" value={editAvatar} onChange={(e) => setEditAvatar(e.target.value)} />
                 </div>
                 
                 <div className="p-5 bg-white/[0.02] border border-white/5 rounded-2xl">
@@ -484,7 +469,7 @@ const UserManagement = () => {
                               type="button"
                               onClick={() => setSkillValue(key, 0)}
                               className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${
-                                value === 0 ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400' : 'bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10'
+                                value === 0 ? 'bg-white/10 border-white/20 text-zinc-200' : 'bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10'
                               }`}
                               title="Definir 0"
                             >
@@ -498,7 +483,7 @@ const UserManagement = () => {
                                 className="p-1 rounded-md hover:bg-white/10 transition-all"
                                 title={`Definir ${s}`}
                               >
-                                <Star className={`w-4 h-4 ${value >= s ? 'text-yellow-500 fill-yellow-500' : 'text-gray-700'}`} />
+                                <Star className={`w-4 h-4 ${value >= s ? 'text-amber-400 fill-amber-400' : 'text-gray-700'}`} />
                               </button>
                             ))}
                             <span className="ml-2 text-xs text-gray-500 font-mono w-5 text-right">{value}</span>
@@ -515,7 +500,7 @@ const UserManagement = () => {
                         type="number"
                         min={0}
                         max={100}
-                        className="w-28 px-4 py-2 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                        className="w-28 px-4 py-2 bg-black border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-400/30 outline-none"
                         value={editResolutionRate}
                         onChange={(e) => setResolutionRateValue(Number(e.target.value))}
                       />
@@ -523,7 +508,7 @@ const UserManagement = () => {
                     </div>
                   </div>
                 </div>
-              <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-xl shadow-purple-900/20">
+              <button type="submit" disabled={loading} className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2">
                 {loading ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Save className="w-5 h-5" /> Salvar Alterações</>}
               </button>
             </form>
@@ -536,7 +521,7 @@ const UserManagement = () => {
         <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl animate-in zoom-in duration-300 my-auto">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Novo <span className="text-blue-500">Feedback</span></h3>
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Novo <span className="text-indigo-300">Feedback</span></h3>
               <button onClick={() => setFeedbackUser(null)} className="p-2 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-all"><X className="w-6 h-6" /></button>
             </div>
             
@@ -545,7 +530,7 @@ const UserManagement = () => {
             <div className="relative mb-6">
               <textarea 
                 required
-                className="w-full px-5 py-4 bg-black border border-white/10 rounded-2xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none text-white transition-all placeholder:text-gray-700 min-h-[120px] resize-none"
+                className="w-full px-5 py-4 bg-black border border-white/10 rounded-2xl focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 outline-none text-white transition-all placeholder:text-gray-700 min-h-[120px] resize-none"
                 value={feedbackContent}
                 onChange={(e) => setFeedbackContent(e.target.value)}
                 onPaste={handlePaste}
@@ -567,7 +552,7 @@ const UserManagement = () => {
                 </div>
                 <button 
                   onClick={() => setFeedbackAttachment(null)}
-                  className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-all"
+                  className="absolute -top-2 -right-2 p-1.5 bg-zinc-500 text-white rounded-full shadow-lg hover:bg-zinc-400 transition-all"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -579,8 +564,8 @@ const UserManagement = () => {
                 onClick={() => setSelectedType('positive')}
                 className={`py-4 rounded-2xl transition-all flex items-center justify-center gap-3 font-black border ${
                   selectedType === 'positive' 
-                    ? 'bg-green-600 border-green-500 text-white shadow-lg shadow-green-900/40 scale-[1.02]' 
-                    : 'bg-green-600/10 border-green-500/30 text-green-500 hover:bg-green-600/20'
+                    ? 'bg-emerald-500 border-emerald-400 text-black scale-[1.02]' 
+                    : 'bg-emerald-500/10 border-emerald-400/20 text-emerald-300 hover:bg-emerald-500/15'
                 }`}
               >
                 <ThumbsUp className="w-6 h-6" /> POSITIVO
@@ -589,8 +574,8 @@ const UserManagement = () => {
                 onClick={() => setSelectedType('negative')}
                 className={`py-4 rounded-2xl transition-all flex items-center justify-center gap-3 font-black border ${
                   selectedType === 'negative' 
-                    ? 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-900/40 scale-[1.02]' 
-                    : 'bg-red-600/10 border-red-500/30 text-red-500 hover:bg-red-600/20'
+                    ? 'bg-rose-600 border-rose-500 text-white scale-[1.02]' 
+                    : 'bg-rose-500/10 border-rose-400/20 text-rose-300 hover:bg-rose-500/15'
                 }`}
               >
                 <ThumbsDown className="w-6 h-6" /> NEGATIVO
@@ -600,7 +585,7 @@ const UserManagement = () => {
             <button 
               onClick={sendQuickFeedback}
               disabled={!feedbackContent || !selectedType || loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-black py-4 rounded-2xl transition-all flex items-center justify-center gap-3 text-lg shadow-xl shadow-blue-900/20 active:scale-[0.98]"
+              className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-black py-4 rounded-2xl transition-all flex items-center justify-center gap-3 text-lg active:scale-[0.98]"
             >
               {loading ? (
                 <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

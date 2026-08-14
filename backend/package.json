@@ -17,10 +17,16 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.3.0",
-    "node-cron": "^4.2.1"
+    "mongoose": "^9.9.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "overrides": {
+    "body-parser": "2.3.0",
+    "brace-expansion": "5.0.9",
+    "path-to-regexp": "8.4.2",
+    "picomatch": "2.3.2",
+    "qs": "6.15.3"
   }
 }

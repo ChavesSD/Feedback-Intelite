@@ -30,14 +30,14 @@ class AppErrorBoundary extends React.Component<
         <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
           <div className="w-full max-w-md bg-[#0a0a0a] border border-white/10 rounded-3xl p-8">
             <h1 className="text-2xl font-black uppercase tracking-tight">
-              Algo deu <span className="text-blue-500">errado</span>
+              Algo deu <span className="text-indigo-300">errado</span>
             </h1>
             <p className="text-sm text-gray-400 mt-3">
               Sua sessão pode ter expirado ou ocorreu um erro inesperado. Clique abaixo para limpar a sessão e entrar novamente.
             </p>
             <button
               onClick={this.resetSession}
-              className="mt-6 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all"
+              className="mt-6 w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 rounded-xl transition-all"
             >
               Recarregar e ir para login
             </button>

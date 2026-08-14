@@ -3,25 +3,137 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
-
-const os = require('os');
-const https = require('https');
-const cron = require('node-cron');
-
 const path = require('path');
+const os = require('os');
+const dns = require('dns').promises;
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const app = express();
-const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const PORT = process.env.PORT || 5001;
+const isProduction = process.env.NODE_ENV === 'production';
+const JWT_SECRET = process.env.JWT_SECRET;
+const VALID_SECTORS = ['Suporte', 'Comercial', 'RH', 'Geral'];
+const VALID_ROLES = ['employee', 'supervisor'];
+const VALID_FEEDBACK_TYPES = ['positive', 'negative', 'neutral'];
+const OBJECT_ID_RE = /^[0-9a-fA-F]{24}$/;
+const MAX_NAME_LEN = 120;
+const MAX_USERNAME_LEN = 80;
+const MAX_CONTENT_LEN = 4000;
+const MAX_ATTACHMENT_LEN = 5_500_000;
+const MIN_PASSWORD_LEN = 6;
+
+if (!JWT_SECRET) {
+  if (isProduction) {
+    console.error('❌ JWT_SECRET é obrigatório em produção.');
+    process.exit(1);
+  }
+  console.warn('⚠️ JWT_SECRET não definido. Defina no .env antes de ir para produção.');
+}
+
+const jwtSecret = JWT_SECRET || 'dev-only-insecure-secret';
 app.disable('x-powered-by');
+
+const isValidObjectId = (value) => typeof value === 'string' && OBJECT_ID_RE.test(value);
+const asTrimmedString = (value, maxLen) => {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  return maxLen ? trimmed.slice(0, maxLen) : trimmed;
+};
+
+const looksLikeImage = (buf) => {
+  if (!buf || buf.length < 12) return false;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true;
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true;
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) return true;
+  return false;
+};
+
+const isSafeAttachment = (value) => {
+  if (!value) return true;
+  if (typeof value !== 'string' || value.length > MAX_ATTACHMENT_LEN) return false;
+  if (value.startsWith('data:image/')) return true;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const isPrivateIPv4 = (host) => {
+  const parts = host.split('.').map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
+  const [a, b] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  return false;
+};
+
+const isBlockedHostname = (hostname) => {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host === 'metadata.google.internal') return true;
+  if (host.includes(':')) {
+    if (host === '::1' || host === '::') return true;
+    if (host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('::ffff:')) return true;
+  }
+  return isPrivateIPv4(host);
+};
+
+const assertPublicUrl = async (targetUrl) => {
+  if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
+    throw new Error('Protocolo não suportado');
+  }
+  const hostname = targetUrl.hostname.toLowerCase();
+  if (isBlockedHostname(hostname)) {
+    throw new Error('Host não permitido');
+  }
+  const { address } = await dns.lookup(hostname);
+  if (isBlockedHostname(address)) {
+    throw new Error('Host não permitido');
+  }
+};
+
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 8;
+const getClientKey = (req, username) => {
+  const xf = req.headers['x-forwarded-for'];
+  const ip = (typeof xf === 'string' && xf.split(',')[0].trim()) || req.ip || req.socket?.remoteAddress || 'unknown';
+  return `${ip}:${String(username || '').toLowerCase()}`;
+};
+const isLoginRateLimited = (key) => {
+  const rec = loginAttempts.get(key);
+  if (!rec) return false;
+  if (Date.now() - rec.firstAt > LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
+    return false;
+  }
+  return rec.count >= LOGIN_MAX_ATTEMPTS;
+};
+const recordLoginFailure = (key) => {
+  const now = Date.now();
+  const rec = loginAttempts.get(key);
+  if (!rec || now - rec.firstAt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { count: 1, firstAt: now });
+    return;
+  }
+  rec.count += 1;
+};
 
 const authenticate = (req, res, next) => {
   try {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
     if (!token) return res.status(401).json({ message: 'Não autenticado' });
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = { id: payload.id, role: payload.role };
+    const payload = jwt.verify(token, jwtSecret);
+    if (!payload?.id || !payload?.role) return res.status(401).json({ message: 'Token inválido ou expirado' });
+    req.user = { id: String(payload.id), role: payload.role };
     return next();
   } catch {
     return res.status(401).json({ message: 'Token inválido ou expirado' });
@@ -33,19 +145,6 @@ const requireSupervisor = (req, res, next) => {
   return next();
 };
 
-// Helper to get system base URL for WhatsApp notifications
-const getSystemUrl = () => {
-  if (process.env.RAILWAY_STATIC_URL) {
-    return `https://${process.env.RAILWAY_STATIC_URL}`;
-  }
-  if (process.env.SYSTEM_URL) {
-    return process.env.SYSTEM_URL;
-  }
-  const localIp = getLocalIP();
-  return `http://${localIp}:8080`;
-};
-
-// Function to get local IP
 const getLocalIP = () => {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -72,7 +171,7 @@ app.use(cors({
     if (!origin) return cb(null, true);
     if (process.env.NODE_ENV === 'development') return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error('Origin não permitido'), false);
+    return cb(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -92,6 +191,11 @@ app.use((req, res, next) => {
 // Serve static files from the frontend build
 const frontendPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendPath));
+
+if (!process.env.MONGODB_URI) {
+  console.error('❌ MONGODB_URI é obrigatório.');
+  process.exit(1);
+}
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -127,7 +231,6 @@ const userSchema = new mongoose.Schema({
     dificuldade: { type: Number, default: 0, min: 0, max: 5 }
   },
   resolutionRate: { type: Number, default: 0, min: 0, max: 100 },
-  phone: { type: String, default: '' }, // Adicionado para notificações WhatsApp
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -150,103 +253,51 @@ const feedbackSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now }
 });
 
-const eventSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  content: { type: String, required: true },
-  attachment: { type: String, default: '' },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  createdByName: { type: String, required: true },
-  recognized: { type: Boolean, default: false },
-  recognizedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
-  recognizedAt: { type: Date, required: false },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const messageTemplateSchema = new mongoose.Schema({
-  welcome: {
-    type: String,
-    default:
-      `*Bem-vindo ao Sistema de Feedback!* 🚀\n\n` +
-      `Olá {name},\n` +
-      `Suas credenciais de acesso foram criadas:\n\n` +
-      `🔗 *Acesse:* {systemUrl}\n` +
-      `👤 *Login:* {username}\n` +
-      `🔑 *Senha:* (A senha definida pelo seu supervisor)\n\n` +
-      `Acesse agora para começar a enviar e receber feedbacks!`
-  },
-  feedback: {
-    type: String,
-    default:
-      `*Novo Feedback Recebido!* 🚀\n\n` +
-      `Olá {name},\n` +
-      `Você acabou de receber um novo feedback ({type}).\n\n` +
-      `*Comentário:* "{content}"\n\n` +
-      `Acesse o sistema para ver mais detalhes: {systemUrl}`
-  },
-  reminder: {
-    type: String,
-    default:
-      `*Lembrete de Reunião de Feedback!* 📅\n\n` +
-      `Olá time,\n` +
-      `Lembrando que hoje às {meetingTime} teremos nossa reunião semanal de feedback.\n\n` +
-      `Preparem seus pontos e nos vemos em breve! 🚀`
-  }
-}, { timestamps: true });
-
 const User = mongoose.model('User', userSchema);
 const Feedback = mongoose.model('Feedback', feedbackSchema);
-const Event = mongoose.model('Event', eventSchema);
-const MessageTemplate = mongoose.model('MessageTemplate', messageTemplateSchema);
-
-const getMessageTemplates = async () => {
-  let doc = await MessageTemplate.findOne();
-  if (!doc) doc = await MessageTemplate.create({});
-  return doc;
-};
-
-const renderTemplate = (template, variables) => {
-  if (!template) return '';
-  return template.replace(/\{(\w+)\}/g, (match, key) => {
-    const value = variables[key];
-    return value === undefined || value === null ? match : String(value);
-  });
-};
 
 // --- Routes ---
 
 // 1. Auth & Users
 app.post('/api/login', async (req, res) => {
   try {
-    // Verificar se o banco está conectado antes de qualquer operação
     if (mongoose.connection.readyState !== 1) {
       console.error('❌ Tentativa de login sem conexão com o banco de dados.');
-      return res.status(503).json({ 
-        message: 'Serviço temporariamente indisponível: Erro de conexão com o banco de dados (IP bloqueado no Atlas?)' 
+      return res.status(503).json({
+        message: 'Serviço temporariamente indisponível: Erro de conexão com o banco de dados (IP bloqueado no Atlas?)'
       });
     }
 
-    const { username, password } = req.body;
-    console.log(`🔑 Tentativa de login para: ${username}`);
-    
-    const user = await User.findOne({ username: username.toLowerCase() });
-    if (!user) {
-      console.log(`❌ Credenciais inválidas para: ${username}`);
-      return res.status(401).json({ message: 'Credenciais inválidas' });
+    const username = asTrimmedString(req.body?.username, MAX_USERNAME_LEN).toLowerCase();
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Credenciais inválidas' });
     }
-    
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      console.log(`❌ Credenciais inválidas para: ${username}`);
+
+    const attemptKey = getClientKey(req, username);
+    if (isLoginRateLimited(attemptKey)) {
+      return res.status(429).json({ message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+    }
+
+    const user = await User.findOne({ username });
+    if (!user) {
+      recordLoginFailure(attemptKey);
       return res.status(401).json({ message: 'Credenciais inválidas' });
     }
 
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      recordLoginFailure(attemptKey);
+      return res.status(401).json({ message: 'Credenciais inválidas' });
+    }
+
+    loginAttempts.delete(attemptKey);
     const token = jwt.sign(
       { id: user._id, role: user.role },
-      JWT_SECRET,
+      jwtSecret,
       { expiresIn: '24h' }
     );
 
-    console.log(`✅ Login bem-sucedido: ${username}`);
     res.json({
       token,
       user: {
@@ -257,8 +308,7 @@ app.post('/api/login', async (req, res) => {
         sector: user.sector,
         avatar: user.avatar,
         skills: user.skills,
-        resolutionRate: user.resolutionRate,
-        phone: user.phone || ''
+        resolutionRate: user.resolutionRate
       }
     });
   } catch (error) {
@@ -269,7 +319,7 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/users/public', authenticate, async (req, res) => {
   try {
-    const users = await User.find().select('_id name username role sector avatar skills resolutionRate createdAt');
+    const users = await User.find().select('_id name username role sector avatar skills resolutionRate');
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Erro interno' });
@@ -287,15 +337,29 @@ app.get('/api/users', authenticate, requireSupervisor, async (req, res) => {
 
 app.post('/api/users', authenticate, requireSupervisor, async (req, res) => {
   try {
-    const { name, username, password, avatar, sector, phone } = req.body;
-    const newUser = new User({ 
-      name, 
-      username: username.toLowerCase(), 
+    const name = asTrimmedString(req.body?.name, MAX_NAME_LEN);
+    const username = asTrimmedString(req.body?.username, MAX_USERNAME_LEN).toLowerCase();
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const avatar = typeof req.body?.avatar === 'string' ? req.body.avatar : '';
+    const sector = VALID_SECTORS.includes(req.body?.sector) ? req.body.sector : 'Geral';
+
+    if (!name || !username) {
+      return res.status(400).json({ message: 'Nome e usuário são obrigatórios' });
+    }
+    if (password.length < MIN_PASSWORD_LEN) {
+      return res.status(400).json({ message: `A senha deve ter pelo menos ${MIN_PASSWORD_LEN} caracteres` });
+    }
+    if (avatar && !isSafeAttachment(avatar)) {
+      return res.status(400).json({ message: 'Avatar inválido' });
+    }
+
+    const newUser = new User({
+      name,
+      username,
       role: 'employee',
-      sector: sector || 'Geral',
-      password: password || process.env.DEFAULT_EMPLOYEE_PASSWORD || 'mudar123',
-      avatar: avatar || '',
-      phone: phone || ''
+      sector,
+      password,
+      avatar
     });
     await newUser.save();
     res.status(201).json({
@@ -306,18 +370,22 @@ app.post('/api/users', authenticate, requireSupervisor, async (req, res) => {
       sector: newUser.sector,
       avatar: newUser.avatar,
       skills: newUser.skills,
-      resolutionRate: newUser.resolutionRate,
-      phone: newUser.phone
+      resolutionRate: newUser.resolutionRate
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(400).json({ message: 'Nome de usuário já existe' });
+    }
     res.status(400).json({ message: 'Erro ao criar usuário' });
   }
 });
 
 app.put('/api/users/:id', authenticate, async (req, res) => {
   try {
-    const { name, username, password, avatar, sector, role, phone, skills, resolutionRate } = req.body;
-    
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: 'ID inválido' });
+    }
+
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Usuário não encontrado' });
 
@@ -326,21 +394,35 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
 
     if (!isSelf && !isSupervisor) return res.status(403).json({ message: 'Acesso negado' });
 
+    const name = asTrimmedString(req.body?.name, MAX_NAME_LEN);
+    const username = asTrimmedString(req.body?.username, MAX_USERNAME_LEN).toLowerCase();
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const avatar = req.body?.avatar;
+    const sector = req.body?.sector;
+    const role = req.body?.role;
+    const skills = req.body?.skills;
+    const resolutionRate = req.body?.resolutionRate;
+
+    if (password && password.length < MIN_PASSWORD_LEN) {
+      return res.status(400).json({ message: `A senha deve ter pelo menos ${MIN_PASSWORD_LEN} caracteres` });
+    }
+    if (avatar !== undefined && avatar !== '' && !isSafeAttachment(avatar)) {
+      return res.status(400).json({ message: 'Avatar inválido' });
+    }
+
     if (isSelf) {
       if (name) user.name = name;
       if (avatar !== undefined) user.avatar = avatar;
-      if (phone !== undefined) user.phone = phone;
       if (password) user.password = password;
     }
 
     if (isSupervisor) {
       if (name) user.name = name;
-      if (username) user.username = username.toLowerCase();
+      if (username) user.username = username;
       if (avatar !== undefined) user.avatar = avatar;
-      if (sector) user.sector = sector;
-      if (role) user.role = role;
+      if (VALID_SECTORS.includes(sector)) user.sector = sector;
+      if (VALID_ROLES.includes(role) && !(isSelf && role !== 'supervisor')) user.role = role;
       if (password) user.password = password;
-      if (phone !== undefined) user.phone = phone;
 
       const toNumberOrNull = (value) => {
         const n = typeof value === 'number' ? value : Number(value);
@@ -375,17 +457,26 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
       sector: user.sector,
       avatar: user.avatar,
       skills: user.skills,
-      resolutionRate: user.resolutionRate,
-      phone: user.phone
+      resolutionRate: user.resolutionRate
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(400).json({ message: 'Nome de usuário já existe' });
+    }
     res.status(400).json({ message: 'Erro ao atualizar usuário' });
   }
 });
 
 app.delete('/api/users/:id', authenticate, requireSupervisor, async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: 'ID inválido' });
+    }
+    if (req.user.id === req.params.id) {
+      return res.status(400).json({ message: 'Você não pode remover a si mesmo' });
+    }
+    const deleted = await User.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: 'Usuário não encontrado' });
     res.json({ message: 'Usuário removido' });
   } catch (error) {
     res.status(500).json({ message: 'Erro interno' });
@@ -396,10 +487,13 @@ app.delete('/api/users/:id', authenticate, requireSupervisor, async (req, res) =
 app.get('/api/feedbacks/sent/:senderId', authenticate, async (req, res) => {
   try {
     const { senderId } = req.params;
+    if (!isValidObjectId(senderId)) {
+      return res.status(400).json({ message: 'ID inválido' });
+    }
     if (req.user.role !== 'supervisor' && req.user.id !== senderId) {
       return res.status(403).json({ message: 'Acesso negado' });
     }
-    const feedbacks = await Feedback.find({ senderId: req.params.senderId }).sort({ date: -1 });
+    const feedbacks = await Feedback.find({ senderId }).sort({ date: -1 });
     res.json(feedbacks);
   } catch (error) {
     res.status(500).json({ message: 'Erro interno' });
@@ -432,10 +526,13 @@ app.delete('/api/feedbacks/:id', authenticate, async (req, res) => {
 app.get('/api/feedbacks/:receiverId', authenticate, async (req, res) => {
   try {
     const { receiverId } = req.params;
+    if (!isValidObjectId(receiverId)) {
+      return res.status(400).json({ message: 'ID inválido' });
+    }
     if (req.user.role !== 'supervisor' && req.user.id !== receiverId) {
       return res.status(403).json({ message: 'Acesso negado' });
     }
-    const feedbacks = await Feedback.find({ receiverId: req.params.receiverId }).sort({ date: -1 });
+    const feedbacks = await Feedback.find({ receiverId }).sort({ date: -1 });
     const safe = feedbacks.map((f) => {
       if (f.isAnonymous) {
         return {
@@ -454,137 +551,45 @@ app.get('/api/feedbacks/:receiverId', authenticate, async (req, res) => {
 
 app.post('/api/feedbacks', authenticate, async (req, res) => {
   try {
-    const { receiverId, content, rating, isAnonymous, type, attachment } = req.body;
-    
-    let receiverSector = 'Geral';
-    
-    // Tentar encontrar o setor do destinatário (seja ele supervisor ou funcionário)
-    try {
-      const receiver = await User.findById(receiverId);
-      if (receiver) {
-        receiverSector = receiver.sector;
-      }
-    } catch (e) {
-      // Se receiverId não for um ID válido (ex: 'supervisor' antigo), mantém 'Geral'
-      console.log('ℹ️ Destinatário não é um ID de usuário válido ou não encontrado.');
+    const receiverId = asTrimmedString(req.body?.receiverId, 64);
+    const content = asTrimmedString(req.body?.content, MAX_CONTENT_LEN);
+    const rating = Number(req.body?.rating);
+    const type = VALID_FEEDBACK_TYPES.includes(req.body?.type) ? req.body.type : 'neutral';
+    const isAnonymous = Boolean(req.body?.isAnonymous);
+    const attachment = typeof req.body?.attachment === 'string' ? req.body.attachment : '';
+
+    if (!isValidObjectId(receiverId) || !content || !Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'Dados do feedback inválidos' });
+    }
+    if (receiverId === req.user.id) {
+      return res.status(400).json({ message: 'Não é possível enviar feedback para si mesmo' });
+    }
+    if (attachment && !isSafeAttachment(attachment)) {
+      return res.status(400).json({ message: 'Anexo inválido' });
     }
 
+    const receiver = await User.findById(receiverId);
+    if (!receiver) {
+      return res.status(404).json({ message: 'Destinatário não encontrado' });
+    }
+
+    const sender = await User.findById(req.user.id);
     const newFeedback = new Feedback({
       senderId: req.user.id || null,
-      senderName: isAnonymous ? 'Anônimo' : (await User.findById(req.user.id))?.name || 'Usuário',
+      senderName: isAnonymous ? 'Anônimo' : (sender?.name || 'Usuário'),
       receiverId,
-      receiverSector,
+      receiverSector: receiver.sector || 'Geral',
       content,
       rating,
       isAnonymous,
-      type: type || 'neutral',
-      attachment: attachment || ''
+      type,
+      attachment
     });
     await newFeedback.save();
-
-    // Notificar o destinatário via WhatsApp se ele tiver telefone cadastrado
-    try {
-      const receiverUser = await User.findById(receiverId);
-      if (receiverUser && receiverUser.phone) {
-        sendWhatsAppFeedback(receiverUser, newFeedback);
-      }
-    } catch (err) {
-      console.error('ℹ️ Erro ao buscar usuário para notificação WhatsApp');
-    }
 
     res.status(201).json(newFeedback);
   } catch (error) {
     res.status(400).json({ message: 'Erro ao enviar feedback' });
-  }
-});
-
-app.get('/api/events', authenticate, async (req, res) => {
-  try {
-    const viewer = await User.findById(req.user.id);
-    const isRhViewer = viewer?.sector === 'RH';
-    const events = await Event.find().sort({ createdAt: -1 }).populate('recognizedBy', 'name');
-
-    const response = events.map((event) => ({
-      _id: event._id,
-      title: event.title,
-      content: event.content,
-      attachment: event.attachment || '',
-      createdByName: event.createdByName,
-      recognized: event.recognized,
-      recognizedAt: event.recognizedAt,
-      createdAt: event.createdAt,
-      recognizedByName: isRhViewer && event.recognizedBy ? event.recognizedBy.name : undefined
-    }));
-
-    res.json(response);
-  } catch (error) {
-    res.status(500).json({ message: 'Erro interno' });
-  }
-});
-
-app.post('/api/events', authenticate, async (req, res) => {
-  try {
-    const { title, content, attachment } = req.body;
-    const creator = await User.findById(req.user.id);
-    if (!creator) {
-      return res.status(404).json({ message: 'Usuário criador não encontrado' });
-    }
-    if (creator.sector !== 'RH') {
-      return res.status(403).json({ message: 'Apenas usuários de RH podem criar eventos' });
-    }
-
-    const newEvent = new Event({
-      title,
-      content,
-      attachment: attachment || '',
-      createdBy: creator._id,
-      createdByName: creator.name
-    });
-
-    await newEvent.save();
-    res.status(201).json(newEvent);
-  } catch (error) {
-    res.status(400).json({ message: 'Erro ao criar evento' });
-  }
-});
-
-app.post('/api/events/:id/recognize', authenticate, async (req, res) => {
-  try {
-    const recognizer = await User.findById(req.user.id);
-    if (!recognizer) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-
-    const event = await Event.findById(req.params.id);
-    if (!event) {
-      return res.status(404).json({ message: 'Evento não encontrado' });
-    }
-
-    if (event.recognized) {
-      return res.status(409).json({ message: 'Este evento já foi reconhecido' });
-    }
-
-    event.recognized = true;
-    event.recognizedBy = recognizer._id;
-    event.recognizedAt = new Date();
-    await event.save();
-
-    const feedback = new Feedback({
-      senderId: null,
-      senderName: 'Sistema de Eventos',
-      receiverId: recognizer._id.toString(),
-      receiverSector: recognizer.sector || 'Geral',
-      content: `Reconhecimento do evento: ${event.title}`,
-      rating: 1,
-      isAnonymous: false,
-      type: 'negative',
-      attachment: ''
-    });
-    await feedback.save();
-
-    res.json({ message: 'Evento reconhecido com sucesso' });
-  } catch (error) {
-    res.status(400).json({ message: 'Erro ao reconhecer evento' });
   }
 });
 
@@ -771,466 +776,6 @@ app.get('/api/stats/dashboard', authenticate, async (req, res) => {
   }
 });
 
-// --- Evolution API WhatsApp Proxy ---
-const EVOLUTION_URL = process.env.EVOLUTION_API_URL;
-const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY;
-const INSTANCE_NAME = 'FeedbackSystem';
-
-const evolutionBaseUrl = EVOLUTION_URL ? new URL(EVOLUTION_URL) : null;
-const EVOLUTION_ORIGIN = evolutionBaseUrl ? evolutionBaseUrl.origin : '';
-const EVOLUTION_BASE_PATH = evolutionBaseUrl ? evolutionBaseUrl.pathname.replace(/\/$/, '') : '';
-
-let API_BASE_PATH = EVOLUTION_BASE_PATH;
-let qrCache = { payload: null, fetchedAt: 0 };
-
-if (!EVOLUTION_URL || !EVOLUTION_KEY) {
-  console.warn('⚠️ ATENÇÃO: EVOLUTION_API_URL ou EVOLUTION_API_KEY não configurados no .env');
-}
-
-// Helper para fazer requisições HTTPS
-const evolutionRequest = (method, path, data = null) => {
-  return new Promise((resolve, reject) => {
-    if (!EVOLUTION_ORIGIN) {
-      reject({ status: 500, data: { message: 'EVOLUTION_API_URL não configurada' } });
-      return;
-    }
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    const fullUrl = `${EVOLUTION_ORIGIN}${API_BASE_PATH}${cleanPath}`;
-    
-    console.log(`🌐 Chamando Evolution API: [${method}] ${fullUrl}`);
-
-    const url = new URL(fullUrl);
-    const options = {
-      method: method,
-      headers: {
-        'apikey': EVOLUTION_KEY,
-        'Content-Type': 'application/json',
-        'accept': '*/*'
-      }
-    };
-
-    const req = https.request(url, options, (res) => {
-      let body = '';
-      res.on('data', (chunk) => body += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = body ? JSON.parse(body) : {};
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(parsed);
-          } else {
-            reject({ status: res.statusCode, data: parsed });
-          }
-        } catch (e) {
-          reject({ status: res.statusCode, error: 'JSON_PARSE_ERROR', body });
-        }
-      });
-    });
-
-    req.on('error', (e) => reject(e));
-    if (data) {
-      const postData = JSON.stringify(data);
-      req.setHeader('Content-Length', Buffer.byteLength(postData));
-      req.write(postData);
-    }
-    req.end();
-  });
-};
-
-const buildApiBasePathCandidates = (basePath) => {
-  const normalized = basePath === '/' ? '' : basePath;
-  const candidates = new Set();
-
-  const add = (p) => {
-    const value = p.replace(/\/+$/, '');
-    candidates.add(value === '/' ? '' : value);
-  };
-
-  add(normalized);
-
-  if (!normalized) {
-    add('/api');
-    add('/api/v1');
-    add('/api/v2');
-    add('/v1');
-    add('/v2');
-  }
-
-  if (normalized === '/api') {
-    add('/api/v1');
-    add('/api/v2');
-  }
-
-  if (normalized === '/v1') add('/v2');
-
-  return Array.from(candidates);
-};
-
-const detectApiBasePath = async () => {
-  if (!EVOLUTION_ORIGIN) return;
-
-  const candidates = buildApiBasePathCandidates(EVOLUTION_BASE_PATH);
-  for (const candidate of candidates) {
-    try {
-      API_BASE_PATH = candidate;
-      await evolutionRequest('GET', '/instance/fetchInstances');
-      console.log(`✅ Evolution API detectada com sucesso em: "${API_BASE_PATH || '(root)'}"`);
-      return;
-    } catch (e) {
-      console.log(`ℹ️ Testando base "${candidate || '(root)'}": Falhou (${e.status || 'erro'})`);
-    }
-  }
-
-  API_BASE_PATH = EVOLUTION_BASE_PATH;
-  console.warn('⚠️ Não foi possível detectar a base path da Evolution API automaticamente.');
-};
-
-detectApiBasePath();
-
-const getInstanceByName = async () => {
-  const instances = await evolutionRequest('GET', '/instance/fetchInstances');
-  if (!Array.isArray(instances)) return null;
-  return instances.find((i) => i.name === INSTANCE_NAME) || null;
-};
-
-const createWhatsAppInstance = async () => {
-  const createBody = {
-    instanceName: INSTANCE_NAME,
-    token: process.env.EVOLUTION_INSTANCE_TOKEN || INSTANCE_NAME,
-    qrcode: true,
-    integration: 'WHATSAPP-BAILEYS'
-  };
-
-  if (process.env.WHATSAPP_NUMBER) {
-    createBody.number = process.env.WHATSAPP_NUMBER;
-  }
-
-  await evolutionRequest('POST', '/instance/create', createBody);
-};
-
-const deleteWhatsAppInstance = async () => {
-  try {
-    await evolutionRequest('DELETE', `/instance/delete/${INSTANCE_NAME}`);
-    return;
-  } catch (_) {
-  }
-  await evolutionRequest('POST', `/instance/delete/${INSTANCE_NAME}`);
-};
-
-const ensureInstance = async () => {
-  let instance = await getInstanceByName();
-
-  const hasPlaceholderNumber = instance?.number === '0000000000@temp' || instance?.number === '0000000000@c.us';
-
-  if (instance && hasPlaceholderNumber) {
-    await deleteWhatsAppInstance();
-    instance = null;
-  }
-
-  if (!instance) {
-    console.log(`🚀 Criando nova instância WhatsApp: ${INSTANCE_NAME}`);
-    await createWhatsAppInstance();
-    instance = await getInstanceByName();
-  }
-
-  return instance;
-};
-
-const mapConnectionStatus = (status) => {
-  if (status === 'open') return 'open';
-  if (status === 'connecting') return 'connecting';
-  if (status === 'CONNECTED') return 'open';
-  if (status === 'CONNECTING') return 'connecting';
-  return 'close';
-};
-
-const normalizeWhatsAppNumber = (value) => {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-  if (raw.includes('@')) return raw;
-
-  let digits = raw.replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('00')) digits = digits.slice(2);
-
-  // Brasil: se vier sem DDI, assumir 55
-  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
-    digits = `55${digits}`;
-  }
-
-  return digits;
-};
-
-const ensureSendableNumber = (value) => {
-  const normalized = normalizeWhatsAppNumber(value);
-  if (!normalized) {
-    throw new Error('Número de WhatsApp inválido ou ausente.');
-  }
-  if (!normalized.includes('@') && normalized.length < 12) {
-    throw new Error('Número de WhatsApp inválido. Use DDI + DDD + número.');
-  }
-  return normalized;
-};
-
-const sendWhatsAppText = async (number, text, options = { delay: 1200, presence: 'composing', linkPreview: false }) => {
-  const primaryPayload = {
-    number,
-    text,
-    options
-  };
-
-  try {
-    return await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, primaryPayload);
-  } catch (error) {
-    const fallbackPayload = {
-      number,
-      options,
-      textMessage: { text }
-    };
-    return await evolutionRequest('POST', `/message/sendText/${INSTANCE_NAME}`, fallbackPayload);
-  }
-};
-
-app.get('/api/whatsapp/status', authenticate, requireSupervisor, async (req, res) => {
-  try {
-    console.log(`🔍 Verificando status do WhatsApp para: ${INSTANCE_NAME}`);
-    await ensureInstance();
-
-    const instance = await getInstanceByName();
-    if (!instance) {
-      return res.status(404).json({ message: 'Instância não encontrada na Evolution API' });
-    }
-
-    const state = mapConnectionStatus(instance.connectionStatus);
-    if (state === 'open') {
-      qrCache = { payload: null, fetchedAt: 0 };
-    }
-    res.json({
-      instance: {
-        instanceName: INSTANCE_NAME,
-        status: state,
-        owner: instance.ownerJid,
-        profileName: instance.profileName,
-        profilePictureUrl: instance.profilePicUrl
-      }
-    });
-  } catch (error) {
-    console.error('❌ Erro final na rota de status WhatsApp:');
-    if (error.status) {
-      console.error(`   Status: ${error.status}`);
-      console.error(`   Dados:`, JSON.stringify(error.data, null, 2));
-    } else {
-      console.error(`   Erro:`, error.message || error);
-    }
-    res.status(500).json({ message: 'Erro ao conectar com Evolution API' });
-  }
-});
-
-app.get('/api/whatsapp/qrcode', authenticate, requireSupervisor, async (req, res) => {
-  try {
-    await ensureInstance();
-    const now = Date.now();
-    if (qrCache.payload && (now - qrCache.fetchedAt) < 35000) {
-      return res.json(qrCache.payload);
-    }
-    const paths = [
-      `/instance/qrCode/${INSTANCE_NAME}`,
-      `/instance/qrcode/${INSTANCE_NAME}`,
-      `/instance/connect/${INSTANCE_NAME}`
-    ];
-    let data;
-    let lastErr;
-    for (const p of paths) {
-      try {
-        data = await evolutionRequest('GET', p);
-        break;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    // Se nenhum GET funcionou, tentar POST /instance/connect/{name}
-    if (!data) {
-      try {
-        data = await evolutionRequest('POST', `/instance/connect/${INSTANCE_NAME}`);
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    if (!data) {
-      throw lastErr || { status: 500, data: { message: 'QR endpoints failed' } };
-    }
-    qrCache = { payload: data, fetchedAt: Date.now() };
-    res.json(data);
-  } catch (error) {
-    if (error.status === 400) {
-      return res.status(400).json({ 
-        message: 'A instância pode já estar conectada ou em estado inválido para QR. Reinicie a instância e tente novamente.'
-      });
-    }
-    res.status(500).json({ message: 'Erro ao buscar QR Code' });
-  }
-});
-
-app.post('/api/whatsapp/restart', authenticate, requireSupervisor, async (req, res) => {
-  try {
-    await evolutionRequest('POST', `/instance/restart/${INSTANCE_NAME}`);
-    res.json({ message: 'Instância reiniciada' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro ao reiniciar instância' });
-  }
-});
-
-app.post('/api/whatsapp/disconnect', authenticate, requireSupervisor, async (req, res) => {
-  try {
-    await ensureInstance();
-    const attempts = [
-      { method: 'POST', path: `/instance/logout/${INSTANCE_NAME}` },
-      { method: 'DELETE', path: `/instance/logout/${INSTANCE_NAME}` },
-      { method: 'POST', path: `/instance/disconnect/${INSTANCE_NAME}` },
-      { method: 'DELETE', path: `/instance/disconnect/${INSTANCE_NAME}` }
-    ];
-
-    let ok = false;
-    let lastError = null;
-
-    for (const attempt of attempts) {
-      try {
-        await evolutionRequest(attempt.method, attempt.path);
-        ok = true;
-        break;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    if (!ok) {
-      throw lastError || new Error('Falha ao desconectar instância');
-    }
-
-    qrCache = { payload: null, fetchedAt: 0 };
-    res.json({ message: 'Instância desconectada' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro ao desconectar instância' });
-  }
-});
-
-app.get('/api/whatsapp/templates', authenticate, requireSupervisor, async (req, res) => {
-  try {
-    const templates = await getMessageTemplates();
-    res.json({
-      welcome: templates.welcome,
-      feedback: templates.feedback,
-      reminder: templates.reminder
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro ao carregar templates' });
-  }
-});
-
-app.put('/api/whatsapp/templates', authenticate, requireSupervisor, async (req, res) => {
-  try {
-    const { welcome, feedback, reminder } = req.body || {};
-    const templates = await getMessageTemplates();
-    if (typeof welcome === 'string') templates.welcome = welcome;
-    if (typeof feedback === 'string') templates.feedback = feedback;
-    if (typeof reminder === 'string') templates.reminder = reminder;
-    await templates.save();
-    res.json({
-      welcome: templates.welcome,
-      feedback: templates.feedback,
-      reminder: templates.reminder
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Erro ao salvar templates' });
-  }
-});
-
-// Enviar Mensagem de Bem-Vindo
-app.post('/api/whatsapp/send-welcome', authenticate, requireSupervisor, async (req, res) => {
-  const { userId } = req.body;
-  try {
-    await ensureInstance();
-    const instance = await getInstanceByName();
-    const connectionState = mapConnectionStatus(instance?.connectionStatus);
-    if (connectionState !== 'open') {
-      return res.status(409).json({ message: 'WhatsApp não está conectado. Conecte a instância antes de enviar mensagens.' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user || !user.phone) {
-      return res.status(400).json({ message: 'Usuário não encontrado ou sem WhatsApp' });
-    }
-
-    const recipientNumber = ensureSendableNumber(user.phone);
-    const systemUrl = getSystemUrl();
-
-    const templates = await getMessageTemplates();
-    const message = renderTemplate(templates.welcome, {
-      name: user.name,
-      username: user.username,
-      systemUrl
-    });
-
-    await sendWhatsAppText(recipientNumber, message, { delay: 1200, presence: 'composing', linkPreview: false });
-
-    res.json({ message: 'Mensagem de boas-vindas enviada!' });
-  } catch (error) {
-    console.error('❌ Erro ao enviar boas-vindas:', error);
-    if (error?.status) {
-      return res.status(500).json({ message: 'Falha na Evolution API ao enviar mensagem.' });
-    }
-    res.status(500).json({ message: 'Erro ao enviar mensagem via WhatsApp' });
-  }
-});
-
-// Lembrete de Reunião - Agendado para toda Sexta-feira às 10:00
-cron.schedule('0 10 * * 5', async () => {
-  console.log('⏰ Iniciando envio de lembretes de reunião...');
-  try {
-    const users = await User.find({ phone: { $exists: true, $ne: '' } });
-    const systemUrl = getSystemUrl();
-    const templates = await getMessageTemplates();
-    const message = renderTemplate(templates.reminder, {
-      systemUrl,
-      meetingTime: '11:00'
-    });
-
-    for (const user of users) {
-      try {
-        const recipientNumber = ensureSendableNumber(user.phone);
-        await sendWhatsAppText(recipientNumber, message, { delay: 500, presence: 'composing', linkPreview: false });
-        console.log(`✅ Lembrete enviado para: ${user.name}`);
-      } catch (err) {
-        console.error(`❌ Erro ao enviar lembrete para ${user.name}:`, err.message);
-      }
-    }
-  } catch (error) {
-    console.error('❌ Erro no agendamento de lembretes:', error);
-  }
-});
-
-// Enviar notificação de feedback via WhatsApp
-const sendWhatsAppFeedback = async (receiver, feedback) => {
-  if (!receiver.phone) return;
-  
-  try {
-    const recipientNumber = ensureSendableNumber(receiver.phone);
-    const systemUrl = getSystemUrl();
-    const templates = await getMessageTemplates();
-    const message = renderTemplate(templates.feedback, {
-      name: receiver.name,
-      type: feedback.type,
-      content: feedback.content,
-      systemUrl
-    });
-
-    await sendWhatsAppText(recipientNumber, message, { delay: 1200, presence: 'composing', linkPreview: false });
-    console.log(`📱 Notificação WhatsApp enviada para: ${receiver.name}`);
-  } catch (error) {
-    console.error('❌ Falha ao enviar WhatsApp:', error);
-  }
-};
-
 // Create initial supervisors if they don't exist
 const createInitialSupervisors = async () => {
   try {
@@ -1240,31 +785,41 @@ const createInitialSupervisors = async () => {
         username: 'deyvison@intelite.com',
         role: 'supervisor',
         sector: 'Suporte',
-        password: 'dev18021992'
+        passwordEnv: 'SUPERVISOR_SUPORTE_PASSWORD'
       },
       {
         name: 'Hemelly (Comercial)',
         username: 'hemelly@intelite.com',
         role: 'supervisor',
         sector: 'Comercial',
-        password: 'hemelly123'
+        passwordEnv: 'SUPERVISOR_COMERCIAL_PASSWORD'
       },
       {
         name: 'Leticia (RH)',
         username: 'leticia@intelite.com',
         role: 'supervisor',
         sector: 'RH',
-        password: 'leticia123'
+        passwordEnv: 'SUPERVISOR_RH_PASSWORD'
       }
     ];
 
     for (const s of supervisorsToCreate) {
       const exists = await User.findOne({ username: s.username });
       if (!exists) {
-        await User.create(s);
+        const password = process.env[s.passwordEnv];
+        if (!password || password.length < MIN_PASSWORD_LEN) {
+          console.warn(`⚠️ Supervisor ${s.username} não criado. Defina ${s.passwordEnv} no .env`);
+          continue;
+        }
+        await User.create({
+          name: s.name,
+          username: s.username,
+          role: s.role,
+          sector: s.sector,
+          password
+        });
         console.log(`👤 Supervisor criado: ${s.name} (${s.username})`);
       } else {
-        // Garantir que o cargo e o setor estejam corretos se já existir
         let updated = false;
         if (exists.role !== 'supervisor') {
           exists.role = 'supervisor';
@@ -1274,10 +829,8 @@ const createInitialSupervisors = async () => {
           exists.sector = s.sector;
           updated = true;
         }
-        
-        // Se a senha não for um hash, criptografar (para compatibilidade)
-        if (!exists.password.startsWith('$2')) {
-          exists.password = s.password;
+        if (exists.password && !exists.password.startsWith('$2')) {
+          exists.markModified('password');
           updated = true;
         }
 
@@ -1302,8 +855,7 @@ const createInitialSupervisors = async () => {
 // Remover chamada solta ao final e manter apenas dentro do .then() da conexão
 // createInitialSupervisors();
 
-// Handle SPA routing: serve index.html for all non-API routes
-app.get('/api/avatar', async (req, res) => {
+app.get('/api/avatar', authenticate, async (req, res) => {
   const rawUrl = typeof req.query.url === 'string' ? req.query.url : '';
   if (!rawUrl) {
     res.status(400).json({ message: 'Parâmetro url é obrigatório' });
@@ -1318,63 +870,57 @@ app.get('/api/avatar', async (req, res) => {
     return;
   }
 
-  if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
-    res.status(400).json({ message: 'Protocolo não suportado' });
-    return;
-  }
-
-  const hostname = targetUrl.hostname.toLowerCase();
-  const isPrivateIp = (host) => {
-    const parts = host.split('.').map(n => Number(n));
-    if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return false;
-    const [a, b] = parts;
-    if (a === 10) return true;
-    if (a === 127) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    return false;
-  };
-
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || isPrivateIp(hostname)) {
-    res.status(400).json({ message: 'Host não permitido' });
-    return;
-  }
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(targetUrl.toString(), {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'FeedbackApp/1.0',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Referer': `${targetUrl.origin}/`,
-        'Origin': targetUrl.origin
+    let current = targetUrl;
+    let response = null;
+    for (let hop = 0; hop < 6; hop++) {
+      await assertPublicUrl(current);
+      response = await fetch(current.toString(), {
+        signal: controller.signal,
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+        }
+      });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location');
+        if (!location) {
+          res.status(502).json({ message: 'Falha ao buscar imagem' });
+          return;
+        }
+        current = new URL(location, current);
+        continue;
       }
-    });
+      break;
+    }
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       res.status(502).json({ message: 'Falha ao buscar imagem' });
       return;
     }
 
     const contentType = response.headers.get('content-type') || '';
-    const isImageLike =
+    const typeLooksImage =
       contentType.startsWith('image/') ||
       contentType === '' ||
       contentType.startsWith('application/octet-stream');
-    if (!isImageLike) {
-      res.status(415).json({ message: 'Conteúdo não é uma imagem' });
-      return;
-    }
 
-    res.setHeader('Content-Type', contentType || 'application/octet-stream');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
 
     const MAX_BYTES = 5 * 1024 * 1024;
     let total = 0;
+    let headerSent = false;
+    const sendHeader = (chunk) => {
+      const ok = typeLooksImage || looksLikeImage(chunk);
+      if (!ok) return false;
+      res.setHeader('Content-Type', contentType.startsWith('image/') ? contentType : 'application/octet-stream');
+      headerSent = true;
+      return true;
+    };
 
     if (response.body && response.body.getReader) {
       const reader = response.body.getReader();
@@ -1382,28 +928,52 @@ app.get('/api/avatar', async (req, res) => {
         const { done, value } = await reader.read();
         if (done) break;
         if (!value) continue;
-        total += value.byteLength;
+        const chunk = Buffer.from(value);
+        total += chunk.byteLength;
         if (total > MAX_BYTES) {
-          res.status(413).end();
+          if (!headerSent) res.status(413);
+          res.end();
           return;
         }
-        res.write(Buffer.from(value));
+        if (!headerSent && !sendHeader(chunk)) {
+          res.status(415).json({ message: 'Conteúdo não é uma imagem' });
+          return;
+        }
+        res.write(chunk);
+      }
+      if (!headerSent) {
+        res.status(415).json({ message: 'Conteúdo não é uma imagem' });
+        return;
       }
       res.end();
       return;
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_BYTES) {
+    const buffer = Buffer.from(arrayBuffer);
+    if (buffer.byteLength > MAX_BYTES) {
       res.status(413).end();
       return;
     }
-    res.end(Buffer.from(arrayBuffer));
+    if (!typeLooksImage && !looksLikeImage(buffer)) {
+      res.status(415).json({ message: 'Conteúdo não é uma imagem' });
+      return;
+    }
+    res.setHeader('Content-Type', contentType.startsWith('image/') ? contentType : 'application/octet-stream');
+    res.end(buffer);
   } catch (error) {
+    if (error?.message === 'Host não permitido' || error?.message === 'Protocolo não suportado') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     res.status(502).json({ message: 'Erro ao carregar imagem' });
   } finally {
     clearTimeout(timeout);
   }
+});
+
+app.get('*all', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 app.use((err, req, res, next) => {
@@ -1412,10 +982,6 @@ app.use((err, req, res, next) => {
   }
   console.error('Erro não tratado:', err);
   return res.status(500).json({ message: 'Erro interno' });
-});
-
-app.get('*all', (req, res) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => {

@@ -16,7 +16,6 @@ export interface User {
     dificuldade?: number;
   };
   resolutionRate?: number;
-  phone?: string;
 }
 
 interface AuthContextType {
@@ -30,8 +29,8 @@ interface AuthContextType {
   logout: () => void;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
   apiFetchJson: <T = unknown>(path: string, init?: RequestInit) => Promise<{ response: Response; data: T | null }>;
-  addUser: (userData: { name: string, username: string, sector: string, password?: string, avatar?: string, phone?: string }) => Promise<void>;
-  updateUser: (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, phone?: string, skills?: User['skills'], resolutionRate?: number }) => Promise<void>;
+  addUser: (userData: { name: string, username: string, sector: string, password?: string, avatar?: string }) => Promise<void>;
+  updateUser: (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, skills?: User['skills'], resolutionRate?: number }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   refreshUsers: () => Promise<void>;
 }
@@ -68,7 +67,7 @@ const getJwtExpMs = (token: string) => {
 
 const isJwtExpired = (token: string, skewMs: number = 30_000) => {
   const expMs = getJwtExpMs(token);
-  if (!expMs) return false;
+  if (!expMs) return true;
   return Date.now() >= expMs - skewMs;
 };
 
@@ -120,7 +119,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const storedToken = localStorage.getItem('auth_token');
     if (storedToken && isJwtExpired(storedToken)) return null;
     const savedUser = localStorage.getItem('logged_user');
-    return savedUser ? JSON.parse(savedUser) : null;
+    if (!savedUser) return null;
+    try {
+      return JSON.parse(savedUser) as User;
+    } catch {
+      localStorage.removeItem('logged_user');
+      return null;
+    }
   });
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -240,7 +245,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return false;
   };
 
-  const addUser = async (userData: { name: string, username: string, sector: string, password?: string, avatar?: string, phone?: string }) => {
+  const addUser = async (userData: { name: string, username: string, sector: string, password?: string, avatar?: string }) => {
     try {
       const response = await apiFetch('/users', {
         method: 'POST',
@@ -249,14 +254,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } as HeadersInit,
         body: JSON.stringify({ ...userData, role: 'employee' }),
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Erro ao adicionar usuário');
+      }
       await refreshUsers();
     } catch (error) {
       console.error('Erro ao adicionar usuário:', error);
+      throw error;
     }
   };
 
-  const updateUser = async (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, phone?: string }) => {
+  const updateUser = async (id: string, userData: { name: string, username: string, sector: string, role?: string, password?: string, avatar?: string, skills?: User['skills'], resolutionRate?: number }) => {
     try {
       const response = await apiFetch(`/users/${id}`, {
         method: 'PUT',
@@ -297,11 +306,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (response.ok) {
         await refreshUsers();
       } else {
-        const err = await response.json();
-        console.error('Erro ao deletar:', err);
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || 'Erro ao deletar usuário');
       }
     } catch (error) {
       console.error('Erro ao deletar usuário:', error);
+      throw error;
     }
   };
 

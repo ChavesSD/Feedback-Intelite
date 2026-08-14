@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { API_URL } from '../context/AuthContext';
+import { API_URL, useAuth } from '../context/AuthContext';
 
 type Props = {
   src?: string;
@@ -14,8 +14,7 @@ const isPrivateHostname = (host: string) => {
   const parts = hostname.split('.').map((n) => Number(n));
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
   const [a, b] = parts;
-  if (a === 10) return true;
-  if (a === 127) return true;
+  if (a === 10 || a === 127) return true;
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   return false;
@@ -30,12 +29,12 @@ const guessScheme = (rawWithoutScheme: string) => {
 const rewriteKnownImageUrl = (url: URL) => {
   const host = url.hostname.toLowerCase();
 
-  if (host === 'drive.google.com') {
-    const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)\//);
+  if (host === 'drive.google.com' || host === 'docs.google.com') {
+    const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)/);
     const idFromPath = fileMatch?.[1] ?? '';
     const idFromSearch = url.searchParams.get('id') ?? '';
     const id = idFromPath || idFromSearch;
-    if (id) return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
+    if (id) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400`;
   }
 
   if (host === 'dropbox.com' || host === 'www.dropbox.com') {
@@ -86,27 +85,67 @@ const getInitials = (name: string) => {
   return `${parts[0].slice(0, 1)}${parts[parts.length - 1].slice(0, 1)}`.toUpperCase();
 };
 
+const isInlineSrc = (value: string) => value.startsWith('data:') || value.startsWith('blob:');
+const isRemoteSrc = (value: string) => /^https?:\/\//i.test(value);
+
 const Avatar = ({ src, name, className }: Props) => {
-  const [errored, setErrored] = useState(false);
-  const [attempt, setAttempt] = useState<0 | 1 | 2>(0);
-
+  const { token } = useAuth();
   const normalizedSrc = useMemo(() => normalizeUrl(src ?? ''), [src]);
-  const proxiedSrc = useMemo(() => (normalizedSrc ? `${API_URL}/avatar?url=${encodeURIComponent(normalizedSrc)}` : ''), [normalizedSrc]);
   const initials = useMemo(() => getInitials(name), [name]);
-
-  const effectiveSrc = attempt === 2 ? proxiedSrc : normalizedSrc;
-  const preferProxy = useMemo(() => {
-    if (!normalizedSrc) return false;
-    if (normalizedSrc.startsWith('http:') && window.location.protocol === 'https:') return true;
-    return false;
-  }, [normalizedSrc]);
+  const [displaySrc, setDisplaySrc] = useState('');
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setErrored(false);
-    setAttempt(preferProxy ? 2 : 0);
-  }, [normalizedSrc, preferProxy]);
+    setFailed(false);
+    let cancelled = false;
+    let objectUrl = '';
 
-  if (!effectiveSrc || errored) {
+    const load = async () => {
+      if (!normalizedSrc) {
+        if (!cancelled) setDisplaySrc('');
+        return;
+      }
+
+      if (isInlineSrc(normalizedSrc)) {
+        if (!cancelled) setDisplaySrc(normalizedSrc);
+        return;
+      }
+
+      if (isRemoteSrc(normalizedSrc) && token) {
+        try {
+          const response = await fetch(`${API_URL}/avatar?url=${encodeURIComponent(normalizedSrc)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (response.ok) {
+            const blob = await response.blob();
+            const type = blob.type || '';
+            const typeOk = !type || type.startsWith('image/') || type === 'application/octet-stream';
+            if (blob.size > 32 && typeOk) {
+              objectUrl = URL.createObjectURL(blob);
+              if (cancelled) {
+                URL.revokeObjectURL(objectUrl);
+                return;
+              }
+              setDisplaySrc(objectUrl);
+              return;
+            }
+          }
+        } catch {
+          // cai no fallback da URL original
+        }
+      }
+
+      if (!cancelled) setDisplaySrc(normalizedSrc);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [normalizedSrc, token]);
+
+  if (failed || !displaySrc) {
     return (
       <div className={`w-full h-full flex items-center justify-center bg-black/40 text-white/80 font-black ${className ?? ''}`}>
         {initials}
@@ -116,17 +155,12 @@ const Avatar = ({ src, name, className }: Props) => {
 
   return (
     <img
-      key={`${effectiveSrc}:${attempt}`}
-      src={effectiveSrc}
+      src={displaySrc}
       alt={name}
       className={className}
       loading="lazy"
-      {...(attempt === 1 ? { referrerPolicy: 'no-referrer' as const } : {})}
-      onError={() => {
-        if (attempt === 0) return setAttempt(1);
-        if (attempt === 1) return setAttempt(2);
-        return setErrored(true);
-      }}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
     />
   );
 };
