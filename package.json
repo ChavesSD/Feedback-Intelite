@@ -9,7 +9,7 @@
     "build:frontend": "npm run install:frontend && npm --prefix frontend run build",
     "build": "npm run install:backend && npm run build:frontend",
     "start": "node backend/index.js",
-    "postinstall": "npm run install:backend",
+    "postinstall": "npm run build",
     "install-all": "npm install && npm run install:backend && npm run install:frontend"
   },
   "engines": {
