@@ -4,10 +4,16 @@
   "description": "Sistema de Feedback para Equipes",
   "main": "backend/index.js",
   "scripts": {
-    "postinstall": "npm --prefix backend install --omit=dev",
-    "start": "npm --prefix backend start",
-    "build": "cd frontend && npm install && npm run build",
-    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install:backend": "npm --prefix backend install --omit=dev",
+    "install:frontend": "npm --prefix frontend install --include=dev",
+    "build:frontend": "npm run install:frontend && npm --prefix frontend run build",
+    "build": "npm run install:backend && npm run build:frontend",
+    "start": "node backend/index.js",
+    "postinstall": "npm run install:backend",
+    "install-all": "npm install && npm run install:backend && npm run install:frontend"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "keywords": [],
   "author": "",

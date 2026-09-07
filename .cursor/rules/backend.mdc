@@ -1,0 +1,34 @@
+---
+description: API, modelos e convenções do backend Express/Mongoose
+globs: backend/**
+alwaysApply: false
+---
+
+# Backend (`backend/index.js`)
+
+Tudo vive neste arquivo. Express JSON 6mb. Serve `frontend/dist` + catch-all `GET *all` → `index.html`.
+
+## Modelos
+- **User**: name, username unique, password bcrypt, role, sector, avatar, skills 0–5 (atendimento/proatividade/tratamento/agilidade/dificuldade), resolutionRate 0–100
+- **Feedback**: senderId (User opcional), senderName, receiverId **String**, receiverSector, content, attachment, rating 1–5, type, isAnonymous, date
+
+## Rotas (prefixo `/api`)
+| Auth | Rotas |
+|------|--------|
+| none | `POST /login` |
+| JWT | avatar proxy, users public/self PUT, feedbacks CRUD, stats |
+| JWT+supervisor | `GET/POST /users`, `DELETE /users/:id` |
+
+PUT user: employee só self (name/avatar/password); supervisor edita skills/role/sector.
+
+GET feedbacks recebidos: se anônimo, oculta senderId e força senderName `Anônimo`.
+
+## Env
+`MONGODB_URI`, `JWT_SECRET` (obrigatório em produção), `PORT` (default 5001), `NODE_ENV`, `RAILWAY_STATIC_URL`, `FRONTEND_ORIGIN`, `SUPERVISOR_SUPORTE_PASSWORD`, `SUPERVISOR_COMERCIAL_PASSWORD`, `SUPERVISOR_RH_PASSWORD`
+
+Seed de supervisores só cria usuário se a senha existir no `.env`. Não há senhas no código.
+
+## Ao alterar
+- Manter `authenticate` / `requireSupervisor`
+- Username sempre `.toLowerCase()`
+- `clearFeedbacks.js` é destrutivo (`deleteMany`)

@@ -1,0 +1,30 @@
+---
+description: Mapa do sistema Feedback Intelite — arquitetura, papéis e arquivos-chave
+alwaysApply: true
+---
+
+# Sistema de Feedback Intelite
+
+SPA + API no mesmo deploy. **Não revarra o repo** para mudanças locais: use estas regras e abra só os arquivos da feature.
+
+## Layout
+- `backend/index.js` — monólito Express 5 + Mongoose (API, JWT, SPA)
+- `frontend/src/` — React 19 + Vite 7 + Tailwind 4; UI autenticada é uma página com abas
+- Raiz `index.js` → `require('./backend/index.js')`; `Procfile`: `cd backend && node index.js`
+
+## Portas (atenção)
+- Backend default `PORT || 5001`, bind `0.0.0.0` (alinhado ao Vite/client)
+- Frontend Vite **8080**; `getApiUrl()` em dev aponta para **`:5001/api`**
+
+## Auth e papéis
+- JWT 24h, payload `{ id, role }`, header `Authorization: Bearer`
+- Roles: `employee` | `supervisor`. Setores: `Suporte` | `Comercial` | `RH` | `Geral`
+- Persistência: `localStorage` `auth_token`, `logged_user`, `app_theme`
+
+## Domínio
+- Feedback anônimo opcional; rating 1–5; tipos positive/negative/neutral
+
+## Convenção de mudança
+- Backend: CommonJS, rotas/middleware no mesmo arquivo, try/catch por rota
+- Frontend: `apiFetch`/`apiFetchJson` do `AuthContext` (exceto login)
+- Sem testes; sem pastas `routes/` `models/` `types/`

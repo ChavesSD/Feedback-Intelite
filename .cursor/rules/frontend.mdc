@@ -1,0 +1,37 @@
+---
+description: UI React, abas do dashboard, AuthContext e chamadas de API
+globs: frontend/**
+alwaysApply: false
+---
+
+# Frontend (`frontend/src`)
+
+Rotas reais: `/login`, `/dashboard` (PrivateRoute), `/` → dashboard. Subpáginas = `activeTab` em `Dashboard.tsx`, não rotas filhas.
+
+## Arquivos
+- `context/AuthContext.tsx` — User, login/logout, CRUD users, `apiFetch`/`apiFetchJson`, tema
+- `pages/Dashboard.tsx` — shell, abas, modal perfil, load/send feedbacks
+- Componentes: `DashboardStats`, `FeedbackList`, `FeedbackForm`, `UserManagement`, `Avatar`
+
+## Abas
+- `stats` (default), `feedbacks`
+- `management` se `role === 'supervisor'`
+
+## API client
+- Dev: `http://{host}:5001/api` (direto, ignora proxy Vite)
+- Prod (hostname não-IP): `{origin}/api`
+- `apiFetch` injeta Bearer e faz logout em 401
+- Login usa `fetch` direto sem Bearer
+
+## Tipos (não há pasta types/)
+`User` em AuthContext; `Feedback` em FeedbackList; demais interfaces locais (DashboardData).
+
+## UX
+- Tailwind utility + tema via `body.light` em `index.css` (não `dark:`)
+- Avatars/anexos: FileReader → base64 (perfil ≤700KB)
+- Erros: `alert()` / `confirm()`; envio de feedback falha só no console
+- framer-motion e recharts só em `DashboardStats`
+
+## Ao alterar
+- Reuse `useAuth()`; não crie axios/react-query
+- Gates de supervisor na UI **e** no backend

@@ -972,8 +972,17 @@ app.get('/api/avatar', authenticate, async (req, res) => {
   }
 });
 
-app.get('*all', (req, res) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
+app.get('*all', (req, res, next) => {
+  const indexFile = path.join(frontendPath, 'index.html');
+  res.sendFile(indexFile, (err) => {
+    if (!err) return;
+    if (err.code === 'ENOENT') {
+      return res.status(503).json({
+        message: 'Frontend não encontrado. Rode "npm run build" no deploy.',
+      });
+    }
+    return next(err);
+  });
 });
 
 app.use((err, req, res, next) => {
