@@ -152,11 +152,6 @@ const RankAvatar = ({
       >
         <div className="w-full h-full rounded-full bg-black overflow-hidden border border-white/10 relative group">
           <Avatar src={emp.avatar} name={emp.name} className="w-full h-full object-cover" />
-          {place === 1 && (
-            <div className="absolute top-2 right-2 bg-black/60 rounded-full p-1 border border-amber-400/40">
-              <Crown className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
-            </div>
-          )}
           <div className={`absolute left-1/2 -translate-x-1/2 top-full mt-3 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-30 ${hovered ? '-translate-y-1' : 'translate-y-2'}`}>
             <SkillTooltip emp={emp} wide={place === 1} />
           </div>
